@@ -1,0 +1,36 @@
+{
+  "name": "restaurantos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RestaurantOS — multi-agent platform for restaurant groups",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev":            "npm run dev --workspaces --if-present",
+    "dev:api":        "npm run dev --workspace=apps/api",
+    "dev:web":        "npm run dev --workspace=apps/web",
+    "build":          "npm run build --workspaces --if-present",
+    "build:api":      "npm run build --workspace=apps/api",
+    "build:web":      "npm run build --workspace=apps/web",
+    "test":           "npm run test --workspaces --if-present",
+    "lint":           "npm run lint --workspaces --if-present",
+    "db:migrate":     "npm run migrate --workspace=packages/db",
+    "db:migrate:up":  "npm run migrate:up --workspace=packages/db",
+    "db:migrate:down":"npm run migrate:down --workspace=packages/db",
+    "db:seed":        "npm run seed --workspace=packages/db",
+    "clean":          "find . -name node_modules -type d -not -path '*/node_modules/*' | xargs rm -rf",
+    "setup":          "npm install && npm run db:migrate"
+  },
+  "devDependencies": {
+    "typescript":     "^5.4.0",
+    "eslint":         "^9.0.0",
+    "@typescript-eslint/parser":  "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0"
+  }
+}
