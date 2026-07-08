@@ -240,39 +240,73 @@ app.post('/api/search-vendors', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'TAVILY_API_KEY is not set in api/.env — get a free key at tavily.com' });
     }
 
-    const tavilyRes = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: process.env.TAVILY_API_KEY,
-        query: `${query} manufacturer OR supplier OR factory contact`,
-        search_depth: 'basic',
-        max_results: 8,
-      }),
-    });
-    const tavilyData = await tavilyRes.json();
-    if (!tavilyRes.ok) throw new Error(tavilyData.error || `Tavily error: ${tavilyRes.status}`);
+    // Two Tavily calls run in parallel: a tight query (as the founder typed it) and
+    // a loosened one (category/location only) so there's always a wider pool to draw
+    // "broader" candidates from, even when the specific query is too narrow to surface much.
+    const broadQuery = query.split(/[,.]|(?:\bwith\b)|(?:\bthat\b)/)[0].trim();
+    const [tightRes, broadRes] = await Promise.all([
+      fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: process.env.TAVILY_API_KEY,
+          query: `${query} manufacturer OR supplier OR factory contact`,
+          search_depth: 'advanced',
+          max_results: 12,
+        }),
+      }).then(r => r.json()),
+      fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: process.env.TAVILY_API_KEY,
+          query: `${broadQuery} manufacturer OR supplier`,
+          search_depth: 'basic',
+          max_results: 10,
+        }),
+      }).then(r => r.json()),
+    ]);
+    if (tightRes.error) throw new Error(tightRes.error);
 
-    const results = tavilyData.results || [];
+    // De-dupe by URL across both result sets.
+    const seen = new Set();
+    const results = [...(tightRes.results || []), ...(broadRes.results || [])].filter(r => {
+      if (seen.has(r.url)) return false;
+      seen.add(r.url);
+      return true;
+    });
+
     if (results.length === 0) {
-      return res.json({ ok: true, vendors: [] });
+      return res.json({ ok: true, recommended: [], broader: [] });
     }
 
-    const prompt = `A fashion brand founder searched for: "${query}"
-Here are real web search results:
-${results.map((r, i) => `[${i}] ${r.title}\nURL: ${r.url}\n${(r.content || '').slice(0, 500)}`).join('\n\n')}
+    const prompt = `A fashion brand founder searched for vendors with this request: "${query}"
 
-From these results, extract candidate manufacturers/vendors that plausibly match the search. Only include entries clearly about an actual company/vendor — skip blog posts, marketplaces-as-a-whole (e.g. general "Alibaba" results with no specific company), directories, or irrelevant results.
-Do not invent details not supported by the snippet. Return a JSON object with exactly this structure:
+Here are real web search results (some from a tightly-matched search, some from a broader category search, mixed together):
+${results.map((r, i) => `[${i}] ${r.title}\nURL: ${r.url}\n${(r.content || '').slice(0, 900)}`).join('\n\n')}
+
+Extract candidate manufacturers/vendors. Be generous, not just literal — include anything plausibly relevant, not only exact matches. Skip only results that are clearly not about a specific company (generic blog posts with no vendor named, marketplace homepages with no specific seller, unrelated pages).
+
+Split them into two groups:
+- "recommended": vendors that match essentially everything specific in the founder's request (e.g. if they gave a material, price range, MOQ, or location, these hit all of it).
+- "broader": plausible vendors that match the general category/product but miss one or more of the specific details — include these too, don't drop them, since "recommended" can be wrong and the founder should still see other real options.
+If the founder's request was vague/generic, most results likely belong in "broader" since there's nothing specific to fully match yet.
+
+For each vendor, figure out the source carefully:
+- If the result IS the vendor's own website/page (domain matches the company, or it's their official site/contact page/storefront), set "sourceType": "vendor" and "sourceUrl" to that link.
+- If the result is actually a THIRD PARTY talking about the vendor (an Instagram account that reviews manufacturers, a blog post, a directory listing, a marketplace aggregator page) rather than the vendor's own presence, set "sourceType": "review". If the snippet text itself mentions the vendor's own website, email, or handle, put THAT as "sourceUrl" and put the original review/mention link as "reviewUrl". If no direct vendor link can be found anywhere, "sourceUrl" should be the review link itself (still set "sourceType": "review" so the founder knows it's not the vendor's own page).
+
+Do not invent details not supported by the text. Return a JSON object with exactly this structure:
 {
-  "vendors": [
-    { "name": "string", "category": "string", "location": "string or empty", "description": "one sentence, why this matched", "sourceUrl": "string" }
-  ]
+  "recommended": [
+    { "name": "string", "category": "string", "location": "string or empty", "description": "one sentence on why this matches", "sourceUrl": "string", "sourceType": "vendor" | "review", "reviewUrl": "string or null" }
+  ],
+  "broader": [ same shape as above ]
 }`;
 
     const parsed = await callGeminiText(prompt);
     console.log("✅ Vendor search successful");
-    res.json({ ok: true, vendors: parsed.vendors || [] });
+    res.json({ ok: true, recommended: parsed.recommended || [], broader: parsed.broader || [] });
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });

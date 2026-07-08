@@ -50,6 +50,7 @@ function VendorRow({ v, onClick, onToggleFavorite }) {
 }
 
 function SearchResultCard({ result, onAdd, adding, added }) {
+  const isReview = result.sourceType === 'review';
   return (
     <div className="card-raised" style={{ padding: '16px 18px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
@@ -57,15 +58,27 @@ function SearchResultCard({ result, onAdd, adding, added }) {
           <div style={{ fontSize: 14.5, fontWeight: 700 }}>{result.name}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{result.category || 'Uncategorized'} · {result.location || 'Location unknown'}</div>
         </div>
-        <span className={trustTagClass('neutral')}>External source</span>
+        <span className={trustTagClass(isReview ? 'amber' : 'neutral')}>{isReview ? 'Via review source' : 'External source'}</span>
       </div>
       <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 10 }}>{result.description}</p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        {result.sourceUrl && (
-          <a href={result.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <i className="ph ph-arrow-square-out" /> Source
-          </a>
-        )}
+      {isReview && (
+        <div style={{ fontSize: 11.5, color: 'var(--amber)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <i className="ph ph-info" /> This link goes to a third party talking about the vendor, not the vendor's own page.
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 14 }}>
+          {result.sourceUrl && (
+            <a href={result.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <i className="ph ph-arrow-square-out" /> {isReview ? 'Review source' : 'Vendor site'}
+            </a>
+          )}
+          {result.reviewUrl && result.reviewUrl !== result.sourceUrl && (
+            <a href={result.reviewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--ink-3)' }}>
+              <i className="ph ph-instagram-logo" /> See review
+            </a>
+          )}
+        </div>
         <button className="btn btn-sm" onClick={() => onAdd(result)} disabled={adding || added}>
           {added ? <><i className="ph ph-check" /> Added</> : adding ? 'Adding…' : <><i className="ph ph-plus" /> Add to my vendors</>}
         </button>
@@ -89,8 +102,8 @@ export default function VendorDiscovery() {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
-  const [results, setResults] = useState(null);
-  const [addingIndex, setAddingIndex] = useState(null);
+  const [results, setResults] = useState(null); // { recommended: [], broader: [] }
+  const [addingKey, setAddingKey] = useState(null);
   const [addedUrls, setAddedUrls] = useState([]);
 
   const visible = vendors.filter(v => !v.blocked);
@@ -164,7 +177,7 @@ export default function VendorDiscovery() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      setResults(data.vendors);
+      setResults({ recommended: data.recommended || [], broader: data.broader || [] });
     } catch (err) {
       setSearchError(err.message || 'Search failed.');
     } finally {
@@ -172,22 +185,22 @@ export default function VendorDiscovery() {
     }
   };
 
-  const handleAddResult = async (result, index) => {
-    setAddingIndex(index);
+  const handleAddResult = async (result, key) => {
+    setAddingKey(key);
     try {
       await addVendor({
         name: result.name,
         category: result.category,
         location: result.location,
         specialties: [],
-        sourceNote: result.sourceUrl,
-        label: 'External source',
+        sourceNote: result.reviewUrl || result.sourceUrl,
+        label: result.sourceType === 'review' ? 'Unverified' : 'External source',
       });
       setAddedUrls(prev => [...prev, result.sourceUrl]);
     } catch (err) {
       alert('Could not add vendor: ' + err.message);
     } finally {
-      setAddingIndex(null);
+      setAddingKey(null);
     }
   };
 
@@ -298,10 +311,13 @@ export default function VendorDiscovery() {
                       <label className="form-label">Describe what you're looking for</label>
                       <input
                         className="form-input"
-                        placeholder="e.g. Looking for sustainable organic cotton hoodie manufacturers in Portugal"
+                        placeholder="e.g. Sustainable organic cotton hoodie manufacturers in Portugal, MOQ under 300, target $18/unit"
                         value={query} onChange={e => setQuery(e.target.value)}
                       />
-                      <div className="form-hint">Runs a real web search, then AI extracts candidate vendors from actual results — nothing here is pre-loaded or made up.</div>
+                      <div className="form-hint">
+                        The more specific you are, the better the match — try to include <strong>material</strong>, <strong>quantity/MOQ</strong>, <strong>target price</strong>, and <strong>location</strong>. A vague search gets vague results.
+                        Runs a real web search, then AI extracts candidate vendors from actual results — nothing here is pre-loaded or made up.
+                      </div>
                     </div>
                     <button className="btn btn-primary" type="submit" disabled={searching || !query.trim()}>
                       <i className="ph ph-magnifying-glass" /> {searching ? 'Searching…' : 'Search the web'}
@@ -318,23 +334,40 @@ export default function VendorDiscovery() {
 
                 {results && (
                   <>
-                    <div className="section-label">{results.length} result{results.length === 1 ? '' : 's'} — unverified, review before contacting</div>
-                    {results.length ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {results.map((r, i) => (
-                          <SearchResultCard
-                            key={i}
-                            result={r}
-                            onAdd={res => handleAddResult(res, i)}
-                            adding={addingIndex === i}
-                            added={addedUrls.includes(r.sourceUrl)}
-                          />
-                        ))}
+                    <div className="section-label">
+                      {results.recommended.length} recommended, {results.broader.length} broader — all unverified, review before contacting
+                    </div>
+                    {results.recommended.length === 0 && results.broader.length === 0 ? (
+                      <div className="card-raised" style={{ padding: '30px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>
+                        No clear vendor matches — try a broader or differently-worded query.
                       </div>
                     ) : (
-                      <div className="card-raised" style={{ padding: '30px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>
-                        No clear vendor matches — try a broader or more specific query.
-                      </div>
+                      <>
+                        {results.recommended.length > 0 && (
+                          <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-vendors)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="ph ph-target" /> RECOMMENDED — CLOSEST MATCH TO YOUR SEARCH
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                              {results.recommended.map((r, i) => (
+                                <SearchResultCard key={`rec-${i}`} result={r} onAdd={res => handleAddResult(res, `rec-${i}`)} adding={addingKey === `rec-${i}`} added={addedUrls.includes(r.sourceUrl)} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {results.broader.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <i className="ph ph-circles-three" /> ALSO WORTH A LOOK — IN CASE THE ABOVE AREN'T RIGHT
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                              {results.broader.map((r, i) => (
+                                <SearchResultCard key={`br-${i}`} result={r} onAdd={res => handleAddResult(res, `br-${i}`)} adding={addingKey === `br-${i}`} added={addedUrls.includes(r.sourceUrl)} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 )}
