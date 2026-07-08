@@ -1,3 +1,4 @@
+// api/index.js
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -8,7 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+// 🛑 STRICTLY USING THE REQUESTED MODEL
+const MODEL_NAME = "gemini-flash-lite-latest";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
 async function callGemini(prompt, imageBase64) {
   const payload = {
@@ -25,8 +28,17 @@ async function callGemini(prompt, imageBase64) {
     }],
     generationConfig: {
       response_mime_type: "application/json",
-    }
+    },
+    // Turn off all safety blocks so fashion sketches aren't flagged
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
   };
+
+  console.log(`🚀 Sending request to: ${MODEL_NAME}`);
 
   const response = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
     method: 'POST',
@@ -34,19 +46,26 @@ async function callGemini(prompt, imageBase64) {
     body: JSON.stringify(payload)
   });
 
+  const data = await response.json();
+
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Gemini API Error: ${response.status} ${err}`);
+    console.error("❌ Gemini API Error:", JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || `Gemini Error: ${response.status}`);
   }
 
-  const data = await response.json();
-  // Gemini returns JSON inside a specific candidate structure
+  if (!data.candidates || data.candidates.length === 0 || !data.candidates[0].content) {
+    if (data.candidates?.[0]?.finishReason === 'SAFETY') {
+      throw new Error("AI Safety Block. Try removing any text from the drawing.");
+    }
+    throw new Error("Empty response from AI.");
+  }
+
   const rawJson = data.candidates[0].content.parts[0].text;
   return JSON.parse(rawJson);
 }
 
-// 1. Endpoint for Design Analysis
 app.post('/api/analyze-design', async (req, res) => {
+  console.log("📥 Received analysis request...");
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) return res.status(400).json({ ok: false, error: 'No image provided' });
@@ -54,32 +73,31 @@ app.post('/api/analyze-design', async (req, res) => {
     const prompt = `You are an expert fashion technical designer. Analyze this garment design.
 Provide a JSON response with exactly this structure:
 {
-  "score": <number between 0-100 indicating factory readiness>,
+  "score": <number 0-100>,
   "notes": [
     {
       "severity": "green" | "amber" | "blue" | "red",
-      "text": "specific feedback on construction, proportion, or clarity"
+      "text": "feedback string"
     }
   ]
 }`;
 
     const analysis = await callGemini(prompt, imageBase64);
+    console.log("✅ Analysis successful");
     res.json({ ok: true, analysis });
-
   } catch (error) {
-    console.error('Analysis error:', error);
+    console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });
   }
 });
 
-// 2. Endpoint for Tech Pack Generation
 app.post('/api/generate-tech-pack', async (req, res) => {
+  console.log("📥 Received tech pack request...");
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) return res.status(400).json({ ok: false, error: 'No image provided' });
 
-    const prompt = `You are an expert technical fashion designer. Look at this design sketch.
-Create a realistic technical Bill of Materials (BOM) and a base Measurements chart for Size Medium.
+    const prompt = `You are an expert technical fashion designer. Create a Bill of Materials (BOM) and Measurements chart for Size Medium.
 Return a JSON object with this exact structure:
 {
   "bom": [
@@ -93,15 +111,15 @@ Return a JSON object with this exact structure:
 }`;
 
     const techPackData = await callGemini(prompt, imageBase64);
+    console.log("✅ Tech Pack successful");
     res.json({ ok: true, techPackData });
-
   } catch (error) {
-    console.error('Tech Pack error:', error);
+    console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });
   }
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🧠 Grainline AI (Gemini) running on http://localhost:${PORT}`);
+  console.log(`🧠 Backend running on http://localhost:${PORT}`);
 });

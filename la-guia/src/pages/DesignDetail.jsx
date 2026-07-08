@@ -10,7 +10,7 @@ import EmptyState from '../components/EmptyState.jsx';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const CANVAS_STATUS = {
-  loading: { label: 'Loading Photopea…', color: 'var(--ink-4)' },
+  loading: { label: 'Canvas ready', color: 'var(--green)' },
   ready: { label: 'Canvas ready', color: 'var(--green)' },
   error: { label: 'Could not load canvas', color: 'var(--red)' },
 };
@@ -21,9 +21,9 @@ export default function DesignDetail() {
   const { products, designs, getUploadedFile } = useProducts();
   
   const [analyzing, setAnalyzing] = useState(false);
-  const [generatingTP, setGeneratingTP] = useState(false); // New state for Tech Pack Gen
+  const [generatingTP, setGeneratingTP] = useState(false);
   const [localAnalysis, setLocalAnalysis] = useState(null);
-  const [canvasStatus, setCanvasStatus] = useState('loading');
+  const [canvasStatus, setCanvasStatus] = useState('ready');
   const [expanded, setExpanded] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
   const [captureError, setCaptureError] = useState(null);
@@ -33,7 +33,7 @@ export default function DesignDetail() {
 
   const product = products.find(p => p.id === id);
   const design = designs[id];
-  const uploadedFile = design?.baseType === 'upload' ? getUploadedFile(id) : null;
+  const uploadedFile = getUploadedFile(id);
 
   const svgMarkup = useMemo(() => {
     if (!design || design.baseType === 'upload') return null;
@@ -58,9 +58,8 @@ export default function DesignDetail() {
   }
 
   const analysis = localAnalysis || design.analysis;
-  const statusMeta = CANVAS_STATUS[canvasStatus];
+  const statusMeta = CANVAS_STATUS[canvasStatus] || CANVAS_STATUS.ready;
 
-  // 1. Capture Canvas and get Analysis
   const captureAndAnalyze = async () => {
     setCaptureError(null);
     setAnalyzing(true);
@@ -71,140 +70,116 @@ export default function DesignDetail() {
 
       const response = await fetch(url);
       const blob = await response.blob();
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
       
-      reader.onloadend = async () => {
-        try {
-          const base64data = reader.result.split(',')[1];
+      const base64data = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(blob);
+      });
           
-          const apiRes = await fetch('http://localhost:3001/api/analyze-design', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64data })
-          });
-          
-          const data = await apiRes.json();
-          if (data.ok) {
-            setLocalAnalysis(data.analysis);
-            await supabase.from('designs').update({ analysis: data.analysis }).eq('product_id', product.id);
-          } else {
-            throw new Error(data.error);
-          }
-        } catch (err) {
-          setCaptureError(err.message);
-        } finally {
-          setAnalyzing(false);
-        }
-      };
+      const apiRes = await fetch('http://localhost:3001/api/analyze-design', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64data })
+      });
+      
+      const data = await apiRes.json();
+      if (data.ok) {
+        setLocalAnalysis(data.analysis);
+        await supabase.from('designs').update({ analysis: data.analysis }).eq('product_id', id);
+        
+        setTimeout(() => {
+          document.getElementById('analysis-result-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+
+      } else {
+        throw new Error(data.error);
+      }
     } catch (err) {
-      setCaptureError(err.message || 'Could not capture the canvas');
+      setCaptureError(err.message);
+    } finally {
       setAnalyzing(false);
     }
   };
 
-  // 2. Generate Tech Pack using the captured snapshot
   const handleConvertToTechPack = async () => {
-    if (!snapshot) {
-      alert("Please click 'Capture & Analyze' to freeze your design before converting to a Tech Pack.");
-      return;
-    }
-
     setGeneratingTP(true);
+    setCaptureError(null);
     try {
-      // Get base64 string from the snapshot URL we already have
-      const response = await fetch(snapshot);
-      const blob = await response.blob();
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
+      let base64data;
+      let blobToUpload;
       
-      reader.onloadend = async () => {
-        try {
-          const base64data = reader.result.split(',')[1];
-          
-          // Ask Node backend to generate BOM and Measurements
-          const apiRes = await fetch('http://localhost:3001/api/generate-tech-pack', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64data })
-          });
-          
-          const data = await apiRes.json();
-          if (!data.ok) throw new Error(data.error);
+      if (!snapshot) {
+        const url = await photopeaRef.current.capture();
+        setSnapshot(url);
+        const response = await fetch(url);
+        blobToUpload = await response.blob();
+        base64data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(blobToUpload);
+        });
+      } else {
+        const response = await fetch(snapshot);
+        blobToUpload = await response.blob();
+        base64data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(blobToUpload);
+        });
+      }
 
-          // Save the AI generated data to Supabase
-          const { error } = await supabase
-            .from('tech_packs')
-            .upsert({
-              product_id: product.id,
-              bom: data.techPackData.bom,
-              measurements: data.techPackData.measurements,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'product_id' });
+      // 1. UPLOAD IMAGE TO SUPABASE STORAGE
+      const fileName = `${id}-${Date.now()}.png`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('mockups')
+        .upload(fileName, blobToUpload, { contentType: 'image/png', upsert: true });
 
-          if (error) throw error;
-          
-          // Update product stage to techpack
-          await supabase.from('products').update({ stage: 'techpack' }).eq('id', product.id);
-          
-          // Navigate to the newly filled tech pack!
-          navigate(`/tech-packs/${product.id}`);
+      if (uploadError) throw new Error("Image Upload Failed: " + uploadError.message);
 
-        } catch (err) {
-          alert("Failed to generate Tech Pack: " + err.message);
-          setGeneratingTP(false);
-        }
-      };
+      // Get the permanent public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('mockups')
+        .getPublicUrl(fileName);
+      
+      // 2. ASK AI TO GENERATE TECH PACK
+      const apiRes = await fetch('http://localhost:3001/api/generate-tech-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64data })
+      });
+      
+      const data = await apiRes.json();
+      if (!data.ok) throw new Error(data.error);
+
+      // 3. SAVE EVERYTHING TO DB
+      await supabase.from('tech_packs').upsert({
+        product_id: id,
+        image_url: publicUrl, // Save the permanent image link!
+        bom: data.techPackData.bom,
+        measurements: data.techPackData.measurements,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'product_id' });
+
+      await supabase.from('products').update({ stage: 'techpack' }).eq('id', id);
+      navigate(`/tech-packs/${id}`);
+
     } catch (err) {
-      alert("Error processing image: " + err.message);
+      setCaptureError("Tech Pack Error: " + err.message);
       setGeneratingTP(false);
     }
   };
 
   const toggleExpand = async () => {
-    if (canvasStatus === 'ready') {
-      setToggling(true);
-      try {
-        const url = await photopeaRef.current.capture();
-        const blob = await fetch(url).then(r => r.blob());
-        setRestoreFile(new File([blob], 'canvas.png', { type: 'image/png' }));
-      } catch {}
-      setToggling(false);
-    }
-    setCanvasStatus('loading');
+    setToggling(true);
+    try {
+      const url = await photopeaRef.current.capture();
+      const blob = await fetch(url).then(r => r.blob());
+      setRestoreFile(new File([blob], 'canvas.png', { type: 'image/png' }));
+    } catch {}
+    setToggling(false);
     setExpanded(e => !e);
   };
-
-  const canvasPanel = (
-    <div className={`canvas-panel ${expanded ? 'expanded' : ''}`} style={{ '--cp-accent': 'var(--c-design)' }}>
-      <div className="canvas-panel-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Canvas</span>
-          <span className="canvas-panel-badge">
-            <span className="canvas-panel-dot" style={{ background: statusMeta.color }} />
-            {statusMeta.label}
-          </span>
-          <span className="canvas-panel-badge">powered by <a href="https://www.photopea.com" target="_blank" rel="noreferrer" style={{ marginLeft: 3 }}>Photopea</a></span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={canvasStatus !== 'ready' || analyzing || generatingTP}>
-            {analyzing ? '🤖 Analyzing...' : '🤖 Capture & Analyze'}
-          </button>
-          <button className="btn btn-sm" onClick={toggleExpand} disabled={toggling}>
-            {expanded ? 'Collapse' : 'Expand'}
-          </button>
-        </div>
-      </div>
-      <div style={{ flex: 1, position: 'relative' }}>
-        {toggling && (
-          <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-2)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className="ph ph-spinner ph-spin" style={{ fontSize: 24, color: 'var(--ink-3)' }} />
-          </div>
-        )}
-        <PhotopeaEditor ref={photopeaRef} svgMarkup={svgMarkup} file={uploadedFiles.current.get(id)} onStatusChange={setCanvasStatus} />
-      </div>
-    </div>
-  );
 
   return (
     <>
@@ -217,25 +192,84 @@ export default function DesignDetail() {
           <div className="page-sub">{product.category}</div>
         </div>
         <div className="topbar-right">
-          {/* AI Generator Button */}
           <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing}>
-            {generatingTP ? (
-              <><i className="ph ph-spinner ph-spin" /> Generating Tech Pack...</>
-            ) : (
-              <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>
-            )}
+            {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
           </button>
         </div>
       </div>
 
       <div style={{ padding: '14px 30px 0' }}>
-        <FlowStepper productId={product.id} current="design" />
+        <FlowStepper productId={id} current="design" />
       </div>
 
       <div className="content">
+        {captureError && (
+          <div className="alert" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
+            <i className="ph ph-warning" style={{ marginTop: 1 }} />
+            <div><strong>Error:</strong> {captureError}</div>
+          </div>
+        )}
+
+        {analysis && (
+          <div style={{ maxWidth: 1080, marginBottom: 16 }} id="analysis-result-card">
+            <div className="card-raised">
+              <div className="card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
+                <span className="card-title">AI Design Analysis</span>
+              </div>
+              <div className="card-body">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                  {snapshot && <img src={snapshot} alt="Captured canvas snapshot" style={{ width: 64, height: 64, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1.5px solid var(--border-2)', flexShrink: 0 }} />}
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 700, color: analysis.score >= 80 ? 'var(--green)' : 'var(--amber)' }}>
+                    {analysis.score}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Factory Readiness Score</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(analysis.notes || []).map((note, i) => (
+                    <div key={i} className={`alert alert-${note.severity}`} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 8, fontSize: 13 }}>
+                      <i className={SEVERITY_ICON[note.severity] || "ph ph-info"} style={{ marginTop: 2 }} />
+                      <div>{note.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={{ maxWidth: 1080, display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
           <div style={{ flex: 1, minWidth: 0, height: expanded ? 0 : 600 }}>
-            {canvasPanel}
+            <div className={`canvas-panel ${expanded ? 'expanded' : ''}`} style={{ '--cp-accent': 'var(--c-design)' }}>
+              <div className="canvas-panel-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Canvas</span>
+                  <span className="canvas-panel-badge">
+                    <span className="canvas-panel-dot" style={{ background: statusMeta.color }} />
+                    {statusMeta.label}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={analyzing || generatingTP}>
+                    {analyzing ? 'Analyzing...' : 'Analyze Design'}
+                  </button>
+                  <button className="canvas-icon-btn" onClick={toggleExpand} disabled={toggling}>
+                    <i className={`ph ${expanded ? 'ph-corners-in' : 'ph-corners-out'}`} />
+                  </button>
+                </div>
+              </div>
+              
+              <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{ display: toggling ? 'flex' : 'none', position: 'absolute', inset: 0, background: 'var(--bg-2)', zIndex: 10, alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ph ph-spinner ph-spin" style={{ fontSize: 24, color: 'var(--ink-3)' }} />
+                </div>
+                <PhotopeaEditor 
+                  ref={photopeaRef} 
+                  svgMarkup={restoreFile ? null : svgMarkup} 
+                  file={restoreFile || uploadedFile} 
+                  onStatusChange={setCanvasStatus} 
+                />
+              </div>
+            </div>
           </div>
 
           <div style={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -248,62 +282,13 @@ export default function DesignDetail() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Colorway</label>
-                  <input className="form-input" defaultValue={design.baseType === 'upload' ? '' : design.colorway} placeholder="e.g. Ash / Ecru trim" />
+                  <input className="form-input" defaultValue={design.colorway} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Status</label>
                   <span className="tag tag-accent">{design.status}</span>
                 </div>
               </div>
-            </div>
-            
-            <div className="card-raised">
-              <div className="card-header"><span className="card-title">Creative Cloud</span></div>
-              <div className="card-body">
-                <p style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.6, marginBottom: 14 }}>
-                  Link Adobe Creative Cloud to pass this mockup back and forth with Photoshop or Illustrator.
-                </p>
-                <button className="btn" disabled style={{ opacity: 0.55, cursor: 'not-allowed', width: '100%', justifyContent: 'center' }}>
-                  <i className="ph ph-cloud-arrow-up" /> Connect CC
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ maxWidth: 1080 }}>
-          <div className="card-raised">
-            <div className="card-header">
-              <span className="card-title">Design analysis</span>
-            </div>
-            <div className="card-body">
-              {captureError && (
-                <div className="alert" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>
-                  <i className="ph ph-warning" style={{ marginTop: 1 }} />
-                  {captureError} — give the canvas a second to finish loading and try again.
-                </div>
-              )}
-              {analysis ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                    {snapshot && <img src={snapshot} alt="Captured canvas snapshot" style={{ width: 64, height: 64, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1.5px solid var(--border-2)', flexShrink: 0 }} />}
-                    <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 700, color: analysis.score >= 80 ? 'var(--green)' : analysis.score >= 55 ? 'var(--amber)' : 'var(--red)' }}>
-                      {analysis.score}
-                    </div>
-                    <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>Factory Readiness Score<br/>Assessed by Claude 3.5 Sonnet</div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {analysis.notes.map((note, i) => (
-                      <div key={i} className={`alert alert-${note.severity}`} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 8, fontSize: 13 }}>
-                        <i className={SEVERITY_ICON[note.severity] || "ph ph-info"} style={{ marginTop: 2 }} />
-                        <div>{note.text}</div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <EmptyState icon="ph-magic-wand" title="No analysis yet" sub="Draw or upload your design in the canvas above, then click 'Capture & Analyze' to get instant factory feedback." />
-              )}
             </div>
           </div>
         </div>

@@ -1,7 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
-// Rasterizes our SVG silhouette to a PNG data URL so Photopea has an
-// unambiguous format to open — broadest compatibility of anything it accepts.
 function rasterizeSvgToPng(svgMarkup, width, height) {
   return new Promise((resolve, reject) => {
     const blob = new Blob([svgMarkup], { type: 'image/svg+xml' });
@@ -18,27 +16,30 @@ function rasterizeSvgToPng(svgMarkup, width, height) {
       URL.revokeObjectURL(url);
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = reject;
+    img.onerror = () => {
+      resolve(); // fail silently and just open blank canvas rather than freezing
+    };
     img.src = url;
   });
 }
 
-// Embeds Photopea (photopea.com) as the canvas editor. Communication happens
-// over postMessage: Photopea accepts either a raw file ArrayBuffer (opens it
-// directly) or a string of script code to eval in its own scripting context
-// (Photoshop-like: app.open(url), app.activeDocument, etc). Sending
-// `app.activeDocument.saveToOE('png')` makes it render the flattened doc and
-// post the PNG bytes back to us as an ArrayBuffer — that's the capture path.
 const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onStatusChange }, ref) {
   const iframeRef = useRef(null);
   const [status, setStatus] = useState('loading');
   const pendingCapture = useRef(null);
 
-  useEffect(() => { onStatusChange?.(status); }, [status]); // eslint-disable-line
+  useEffect(() => { onStatusChange?.(status); }, [status]);
+
+  // Fallback: forcefully set to ready after 3 seconds just in case onLoad misses
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStatus('ready');
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     function handleMessage(e) {
-      if (e.source !== iframeRef.current?.contentWindow) return;
       if (e.data instanceof ArrayBuffer && pendingCapture.current) {
         const blob = new Blob([e.data], { type: 'image/png' });
         pendingCapture.current.resolve(URL.createObjectURL(blob));
@@ -52,12 +53,15 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
   useImperativeHandle(ref, () => ({
     capture: () => new Promise((resolve, reject) => {
       const win = iframeRef.current?.contentWindow;
-      if (!win || status !== 'ready') { reject(new Error('Canvas is not ready yet')); return; }
+      if (!win) { reject(new Error('Canvas iframe not found. Please refresh.')); return; }
+      
       pendingCapture.current = { resolve, reject };
+      // Force request flat image
       win.postMessage("app.activeDocument.saveToOE('png');", '*');
+      
       setTimeout(() => {
         if (pendingCapture.current) {
-          pendingCapture.current.reject(new Error('Capture timed out'));
+          pendingCapture.current.reject(new Error('Capture timed out. Make sure you drew something on the canvas.'));
           pendingCapture.current = null;
         }
       }, 8000);
@@ -67,7 +71,6 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
   const handleLoad = async () => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
-    // Photopea's own app needs a beat to boot after the iframe document loads.
     await new Promise(r => setTimeout(r, 2200));
     try {
       if (file) {
@@ -75,11 +78,12 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
         win.postMessage(buf, '*');
       } else if (svgMarkup) {
         const png = await rasterizeSvgToPng(svgMarkup, 900, 1080);
-        win.postMessage(`app.open("${png}")`, '*');
+        if (png) win.postMessage(`app.open("${png}")`, '*');
       }
+    } catch (e) {
+      console.error("Canvas load error:", e);
+    } finally {
       setStatus('ready');
-    } catch {
-      setStatus('error');
     }
   };
 

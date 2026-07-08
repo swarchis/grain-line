@@ -10,24 +10,46 @@ export default function Design() {
   const { products, designs, createDesign } = useProducts();
   const [showNew, setShowNew] = useState(false);
   const [customType, setCustomType] = useState('');
+  const [loading, setLoading] = useState(false);
   const fileRef = useRef(null);
   const designProducts = products.filter(p => p.stage === 'concept' || p.stage === 'design');
 
-  const startFromSilhouette = type => {
-    const id = createDesign({ garmentType: type.label, baseType: 'silhouette', silhouette: type.key });
-    navigate(`/design/${id}`);
+  const startFromSilhouette = async (type) => {
+    setLoading(true);
+    try {
+      const id = await createDesign({ garmentType: type.label, baseType: 'silhouette', silhouette: type.key });
+      navigate(`/design/${id}`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const startFromUpload = e => {
+  const startFromUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const id = createDesign({ garmentType: 'Uploaded mockup', baseType: 'upload', colorway: file.name, file });
-    navigate(`/design/${id}`);
+    setLoading(true);
+    try {
+      const id = await createDesign({ garmentType: 'Uploaded mockup', baseType: 'upload', colorway: file.name, file });
+      navigate(`/design/${id}`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const startFromAI = () => {
-    const id = createDesign({ garmentType: customType || 'Custom garment', baseType: 'ai-silhouette' });
-    navigate(`/design/${id}`);
+  const startFromAI = async () => {
+    setLoading(true);
+    try {
+      const id = await createDesign({ garmentType: customType || 'Custom garment', baseType: 'ai-silhouette' });
+      navigate(`/design/${id}`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -41,8 +63,8 @@ export default function Design() {
           <div className="page-sub">{designProducts.length} in concept or design</div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-primary" onClick={() => setShowNew(s => !s)}>
-            <i className="ph ph-plus" /> New design
+          <button className="btn btn-primary" onClick={() => setShowNew(s => !s)} disabled={loading}>
+            <i className="ph ph-plus" /> {loading ? 'Creating...' : 'New design'}
           </button>
         </div>
       </div>
@@ -58,13 +80,13 @@ export default function Design() {
                 {GARMENT_TYPES.map(t => (
                   <div
                     key={t.key}
-                    onClick={() => startFromSilhouette(t)}
+                    onClick={() => !loading && startFromSilhouette(t)}
                     style={{
                       border: '1.5px solid var(--border-2)', borderRadius: 'var(--r-sm)', padding: '14px 8px 10px',
-                      textAlign: 'center', cursor: 'pointer', background: 'var(--bg-1)', transition: 'all 0.12s',
+                      textAlign: 'center', cursor: loading ? 'wait' : 'pointer', background: 'var(--bg-1)', transition: 'all 0.12s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--c-design)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.transform = ''; }}
+                    onMouseEnter={e => { if(!loading) { e.currentTarget.style.borderColor = 'var(--c-design)'; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
+                    onMouseLeave={e => { if(!loading) { e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.transform = ''; } }}
                   >
                     <div style={{ color: 'var(--ink-2)', display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
                       <GarmentSilhouette type={t.key} size={44} />
@@ -81,10 +103,10 @@ export default function Design() {
               </div>
 
               <div
-                onClick={() => fileRef.current?.click()}
+                onClick={() => !loading && fileRef.current?.click()}
                 style={{
                   border: '1.5px dashed var(--border-2)', borderRadius: 'var(--r)', padding: '26px 16px',
-                  textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, cursor: 'pointer',
+                  textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, cursor: loading ? 'wait' : 'pointer',
                 }}
               >
                 <i className="ph ph-upload-simple" style={{ fontSize: 22, marginBottom: 8, display: 'block', color: 'var(--c-design)' }} />
@@ -94,10 +116,10 @@ export default function Design() {
 
               <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 'var(--r-sm)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--ink-3)', flex: 1, minWidth: 200 }}>
-                  Don't see your garment type above? That's the one case where we'll generate a blank starting silhouette for you.
+                  Don't see your garment type above? We'll generate a blank starting silhouette for you.
                 </span>
                 <input className="form-input" style={{ width: 160 }} placeholder="e.g. Balaclava" value={customType} onChange={e => setCustomType(e.target.value)} />
-                <button className="btn btn-sm" onClick={startFromAI}>Generate silhouette</button>
+                <button className="btn btn-sm" onClick={startFromAI} disabled={loading}>Generate silhouette</button>
               </div>
             </div>
           </div>
