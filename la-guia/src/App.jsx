@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import Sidebar from './components/Sidebar.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { ProductsProvider } from './context/ProductsContext.jsx';
+import { VendorsProvider } from './context/VendorsContext.jsx';
 
 import Welcome from './pages/auth/Welcome.jsx';
 import SignUp from './pages/auth/SignUp.jsx';
@@ -80,19 +81,21 @@ export default function App() {
   return (
     <AuthProvider>
       <ProductsProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/welcome" element={<Welcome />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/login" element={<LogIn />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/*" element={
-              <ProtectedRoute>
-                <AppShell />
-              </ProtectedRoute>
-            } />
-          </Routes>
-        </BrowserRouter>
+        <VendorsProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/welcome" element={<Welcome />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/login" element={<LogIn />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/*" element={
+                <ProtectedRoute>
+                  <AppShell />
+                </ProtectedRoute>
+              } />
+            </Routes>
+          </BrowserRouter>
+        </VendorsProvider>
       </ProductsProvider>
     </AuthProvider>
   );

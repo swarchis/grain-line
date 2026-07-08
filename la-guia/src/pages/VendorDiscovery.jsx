@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { vendors, TRUST_LABELS } from '../data/mockData.js';
+import { useVendors } from '../context/VendorsContext.jsx';
 import { trustTagClass } from '../lib/format.js';
 import TabBar from '../components/TabBar.jsx';
+
+export const TRUST_LABELS = [
+  { label: 'Imported by user', tone: 'neutral' },
+  { label: 'External source', tone: 'neutral' },
+  { label: 'Unverified', tone: 'amber' },
+  { label: 'Verified partner', tone: 'green' },
+  { label: 'Previously quoted', tone: 'blue' },
+  { label: 'Sample completed', tone: 'blue' },
+  { label: 'Production completed', tone: 'green' },
+];
 
 const TABS = [
   { key: 'discover', label: 'Discover & Compare', icon: 'ph-magnifying-glass' },
@@ -18,7 +28,7 @@ function VendorRow({ v, onClick }) {
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{v.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{v.category} · {v.location}</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{v.category || 'Uncategorized'} · {v.location || 'Unknown location'}</div>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -31,9 +41,34 @@ function VendorRow({ v, onClick }) {
 
 export default function VendorDiscovery() {
   const navigate = useNavigate();
+  const { vendors, quotes, loading, addVendor } = useVendors();
   const [tab, setTab] = useState('discover');
-  const [mode, setMode] = useState('search');
-  const saved = vendors.filter(v => v.quoteHistory > 0);
+  const [mode, setMode] = useState('import');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: '', category: '', location: '', specialties: '', sourceNote: '' });
+
+  const saved = vendors.filter(v => quotes.some(q => q.vendor_id === v.id));
+
+  const handleAdd = async e => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const vendor = await addVendor({
+        name: form.name.trim(),
+        category: form.category.trim(),
+        location: form.location.trim(),
+        specialties: form.specialties.split(',').map(s => s.trim()).filter(Boolean),
+        sourceNote: form.sourceNote.trim(),
+      });
+      setForm({ name: '', category: '', location: '', specialties: '', sourceNote: '' });
+      navigate(`/vendors/${vendor.id}`);
+    } catch (err) {
+      alert('Could not add vendor: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -53,21 +88,41 @@ export default function VendorDiscovery() {
         {tab === 'discover' && (
           <>
             <div className="pill-group" style={{ marginBottom: 20 }}>
-              <button className={`pill ${mode === 'search' ? 'active' : ''}`} onClick={() => setMode('search')}>Search</button>
               <button className={`pill ${mode === 'import' ? 'active' : ''}`} onClick={() => setMode('import')}>Import</button>
+              <button className={`pill ${mode === 'search' ? 'active' : ''}`} onClick={() => setMode('search')}>Search</button>
             </div>
 
             {mode === 'import' ? (
-              <div className="card-raised" style={{ marginBottom: 24 }}>
+              <form className="card-raised" style={{ marginBottom: 24 }} onSubmit={handleAdd}>
                 <div className="card-body">
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label className="form-label">Paste a link, email, or vendor page</label>
-                    <input className="form-input" placeholder="e.g. alibaba.com/... or a forwarded vendor email" disabled />
-                    <div className="form-hint">A private vendor profile gets created from whatever you paste — nothing is published or shared.</div>
+                  <div className="grid-3">
+                    <div className="form-group">
+                      <label className="form-label">Vendor name *</label>
+                      <input className="form-input" placeholder="e.g. Norte Textile Co." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Category</label>
+                      <input className="form-input" placeholder="e.g. Denim" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Location</label>
+                      <input className="form-input" placeholder="e.g. Guadalajara, MX" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+                    </div>
                   </div>
-                  <button className="btn btn-primary" disabled style={{ opacity: 0.6 }}><i className="ph ph-plus" /> Import vendor</button>
+                  <div className="form-group">
+                    <label className="form-label">Specialties</label>
+                    <input className="form-input" placeholder="Comma-separated, e.g. Selvedge denim, Small-batch runs" value={form.specialties} onChange={e => setForm(f => ({ ...f, specialties: e.target.value }))} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label className="form-label">Link, email, or notes</label>
+                    <input className="form-input" placeholder="Paste a link, email, or anything else worth keeping" value={form.sourceNote} onChange={e => setForm(f => ({ ...f, sourceNote: e.target.value }))} />
+                    <div className="form-hint">A private vendor profile gets created from this — nothing is published or shared.</div>
+                  </div>
+                  <button className="btn btn-primary" type="submit" disabled={saving || !form.name.trim()}>
+                    <i className="ph ph-plus" /> {saving ? 'Adding…' : 'Add vendor'}
+                  </button>
                 </div>
-              </div>
+              </form>
             ) : (
               <div className="card-raised" style={{ marginBottom: 24 }}>
                 <div className="card-body">
@@ -85,14 +140,23 @@ export default function VendorDiscovery() {
                       <input className="form-input" placeholder="e.g. 500 units" disabled />
                     </div>
                   </div>
+                  <div className="form-hint" style={{ marginTop: 10 }}>Public vendor search isn't connected yet — for now, add vendors you already know about via Import.</div>
                 </div>
               </div>
             )}
 
             <div className="section-label">All vendors</div>
-            <div className="card" style={{ marginBottom: 24 }}>
-              {vendors.map(v => <VendorRow key={v.id} v={v} onClick={() => navigate(`/vendors/${v.id}`)} />)}
-            </div>
+            {loading ? (
+              <div style={{ padding: 30, textAlign: 'center', color: 'var(--ink-3)' }}><i className="ph ph-circle-notch" /> Loading…</div>
+            ) : vendors.length ? (
+              <div className="card" style={{ marginBottom: 24 }}>
+                {vendors.map(v => <VendorRow key={v.id} v={v} onClick={() => navigate(`/vendors/${v.id}`)} />)}
+              </div>
+            ) : (
+              <div className="card-raised" style={{ padding: '30px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5, marginBottom: 24 }}>
+                No vendors yet — add your first one above.
+              </div>
+            )}
 
             <div className="section-label">Trust labels</div>
             <div className="card-raised">
@@ -104,9 +168,15 @@ export default function VendorDiscovery() {
         )}
 
         {tab === 'saved' && (
-          <div className="card">
-            {saved.map(v => <VendorRow key={v.id} v={v} onClick={() => navigate(`/vendors/${v.id}`)} />)}
-          </div>
+          saved.length ? (
+            <div className="card">
+              {saved.map(v => <VendorRow key={v.id} v={v} onClick={() => navigate(`/vendors/${v.id}`)} />)}
+            </div>
+          ) : (
+            <div className="card-raised" style={{ padding: '30px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13.5 }}>
+              No saved vendors yet — vendors you've requested a quote from will show up here.
+            </div>
+          )
         )}
       </div>
     </>
