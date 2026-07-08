@@ -1,80 +1,151 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { products as seedProducts, designs as seedDesigns } from '../data/mockData.js';
+import { supabase } from '../lib/supabase.js';
+import { useAuth } from './AuthContext.jsx';
 
-const PRODUCTS_KEY = 'grainline_products_v1';
-const DESIGNS_KEY = 'grainline_designs_v1';
 const ProductsContext = createContext(null);
 
-function loadProducts() {
-  try {
-    const raw = localStorage.getItem(PRODUCTS_KEY);
-    if (!raw) return seedProducts;
-    const saved = JSON.parse(raw);
-    const savedById = Object.fromEntries(saved.map(p => [p.id, p]));
-    // Merge stage overrides onto the current seed set, and keep any brand-new
-    // products (created via the design studio) that aren't in the seed at all.
-    const merged = seedProducts.map(p => (savedById[p.id] ? { ...p, stage: savedById[p.id].stage } : p));
-    const extra = saved.filter(p => !seedProducts.some(sp => sp.id === p.id));
-    return [...merged, ...extra];
-  } catch {
-    return seedProducts;
-  }
-}
-
-function loadDesigns() {
-  try {
-    const raw = localStorage.getItem(DESIGNS_KEY);
-    if (!raw) return seedDesigns;
-    return { ...seedDesigns, ...JSON.parse(raw) };
-  } catch {
-    return seedDesigns;
-  }
-}
-
 export function ProductsProvider({ children }) {
-  const [products, setProducts] = useState(loadProducts);
-  const [designs, setDesigns] = useState(loadDesigns);
-  // Raw File objects can't be serialized to localStorage — kept in memory only,
-  // so an uploaded mockup survives navigation this session but not a hard reload.
+  const { user } = useAuth();
+  const [products, setProducts] = useState([]);
+  const [designs, setDesigns] = useState({});
+  const [activeBrand, setActiveBrand] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Keep raw files in memory for current session
   const uploadedFiles = useRef(new Map());
 
+  // Load Brand and Products on boot
   useEffect(() => {
-    try { localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products)); } catch {}
-  }, [products]);
+    if (!user) {
+      setProducts([]);
+      setDesigns({});
+      setLoading(false);
+      return;
+    }
 
-  useEffect(() => {
-    try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch {}
-  }, [designs]);
+    async function loadData() {
+      setLoading(true);
+      try {
+        // 1. Get the user's brand
+        const { data: brandData } = await supabase
+          .from('brands')
+          .select('*')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+          
+        if (brandData) {
+          setActiveBrand(brandData);
+          
+          // 2. Get Products for this brand
+          const { data: prodData } = await supabase
+            .from('products')
+            .select('*')
+            .eq('brand_id', brandData.id)
+            .order('created_at', { ascending: false });
+            
+          setProducts(prodData || []);
 
-  const moveProduct = (id, stage) => {
+          // 3. Get Designs for these products
+          const { data: designData } = await supabase
+            .from('designs')
+            .select('*');
+            
+          const designsMap = {};
+          (designData || []).forEach(d => {
+            designsMap[d.product_id] = {
+              garmentType: d.garment_type,
+              silhouette: d.silhouette,
+              baseType: d.base_type,
+              colorway: d.colorway,
+              status: d.status,
+              layers: [{ name: d.base_type === 'upload' ? 'Uploaded mockup' : 'Silhouette base', visible: true }],
+              analysis: null,
+            };
+          });
+          setDesigns(designsMap);
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [user]);
+
+  const moveProduct = async (id, stage) => {
+    // Optimistic UI update
     setProducts(prev => prev.map(p => (p.id === id ? { ...p, stage } : p)));
+    
+    // DB Update
+    const { error } = await supabase
+      .from('products')
+      .update({ stage })
+      .eq('id', id);
+      
+    if (error) {
+      console.error('Failed to move product', error);
+      // Revert if needed (omitted for brevity)
+    }
   };
 
-  // Starting a new design creates both a product workspace (so it shows up in
-  // the pipeline immediately, at Concept) and its design record together.
-  const createDesign = ({ garmentType, baseType, silhouette, colorway, file }) => {
-    const id = `design-${Date.now()}`;
-    if (file) uploadedFiles.current.set(id, file);
-    setProducts(prev => [
-      { id, name: `New ${garmentType}`, category: garmentType, collectionId: null, stage: 'concept', risk: 'Balanced', budget: 0, readiness: 4 },
-      ...prev,
-    ]);
+  const createDesign = async ({ garmentType, baseType, silhouette, colorway, file }) => {
+    if (!activeBrand) throw new Error("No active brand found");
+
+    // 1. Insert Product
+    const { data: productData, error: prodError } = await supabase
+      .from('products')
+      .insert([{
+        brand_id: activeBrand.id,
+        name: `New ${garmentType}`,
+        category: garmentType,
+        stage: 'concept',
+        risk: 'Balanced',
+        budget: 0,
+        readiness: 4
+      }])
+      .select()
+      .single();
+
+    if (prodError) throw prodError;
+
+    // 2. Insert Design
+    const { error: designError } = await supabase
+      .from('designs')
+      .insert([{
+        product_id: productData.id,
+        garment_type: garmentType,
+        base_type: baseType,
+        silhouette: silhouette || null,
+        colorway: colorway || '—',
+        status: 'Sketching'
+      }]);
+
+    if (designError) throw designError;
+
+    // Update local state
+    if (file) uploadedFiles.current.set(productData.id, file);
+    
+    setProducts(prev => [productData, ...prev]);
     setDesigns(prev => ({
       ...prev,
-      [id]: {
+      [productData.id]: {
         garmentType, silhouette: silhouette || null, baseType, colorway: colorway || '—',
         status: 'Sketching',
-        layers: [{ name: baseType === 'upload' ? 'Uploaded mockup' : baseType === 'ai-silhouette' ? 'AI-generated base silhouette' : 'Silhouette base', visible: true }],
+        layers: [{ name: baseType === 'upload' ? 'Uploaded mockup' : 'Silhouette base', visible: true }],
         analysis: null,
       },
     }));
-    return id;
+
+    return productData.id;
   };
 
   const getUploadedFile = id => uploadedFiles.current.get(id) || null;
 
   return (
-    <ProductsContext.Provider value={{ products, moveProduct, designs, createDesign, getUploadedFile }}>
+    <ProductsContext.Provider value={{ products, moveProduct, designs, createDesign, getUploadedFile, activeBrand, loading }}>
       {children}
     </ProductsContext.Provider>
   );

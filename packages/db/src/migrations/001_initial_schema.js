@@ -250,6 +250,7 @@ exports.up = (pgm) => {
   // ── 12. loyalty_transactions ──────────────────────────────────────────────────
   pgm.createTable('loyalty_transactions', {
     id:           { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
+    tenant_id: { type: 'uuid', notNull: true, references: 'tenants(id)', onDelete: 'CASCADE' },
     member_id:    { type: 'uuid', notNull: true, references: 'loyalty_members(id)', onDelete: 'CASCADE' },
     location_id:  { type: 'uuid', notNull: true, references: 'locations(id)', onDelete: 'CASCADE' },
     type:         { type: 'loyalty_tx_type', notNull: true },
@@ -278,6 +279,7 @@ exports.up = (pgm) => {
 
   pgm.createTable('training_completions', {
     id:           { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
+    tenant_id:    { type: 'uuid', notNull: true, references: 'tenants(id)', onDelete: 'CASCADE' },
     employee_id:  { type: 'uuid', notNull: true, references: 'employees(id)', onDelete: 'CASCADE' },
     module_id:    { type: 'uuid', notNull: true, references: 'training_modules(id)', onDelete: 'CASCADE' },
     score:        { type: 'integer', notNull: true },

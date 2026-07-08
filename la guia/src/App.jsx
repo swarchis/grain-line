@@ -1,6 +1,7 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { ProductsProvider } from './context/ProductsContext.jsx';
 
 import Welcome from './pages/auth/Welcome.jsx';
@@ -28,6 +29,20 @@ import ProductInsights from './pages/ProductInsights.jsx';
 import ContentHub from './pages/ContentHub.jsx';
 import Settings from './pages/Settings.jsx';
 import NotificationsInbox from './pages/NotificationsInbox.jsx';
+
+// Protects routes from unauthenticated users
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return null; // Or a subtle loading spinner
+  
+  if (!user) {
+    return <Navigate to="/welcome" state={{ from: location }} replace />;
+  }
+
+  return children;
+}
 
 function AppShell() {
   return (
@@ -63,16 +78,22 @@ function AppShell() {
 
 export default function App() {
   return (
-    <ProductsProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/welcome" element={<Welcome />} />
-          <Route path="/signup" element={<SignUp />} />
-          <Route path="/login" element={<LogIn />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/*" element={<AppShell />} />
-        </Routes>
-      </BrowserRouter>
-    </ProductsProvider>
+    <AuthProvider>
+      <ProductsProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/welcome" element={<Welcome />} />
+            <Route path="/signup" element={<SignUp />} />
+            <Route path="/login" element={<LogIn />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/*" element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            } />
+          </Routes>
+        </BrowserRouter>
+      </ProductsProvider>
+    </AuthProvider>
   );
 }
