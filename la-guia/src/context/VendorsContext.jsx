@@ -64,7 +64,7 @@ export function VendorsProvider({ children }) {
     return data;
   };
 
-  const requestQuote = async ({ vendorId, productId, message }) => {
+  const requestQuote = async ({ vendorId, productId, message, preferences }) => {
     const { data, error } = await supabase
       .from('quotes')
       .insert([{
@@ -73,11 +73,17 @@ export function VendorsProvider({ children }) {
         product_id: productId,
         status: 'Requested',
         message: message || null,
+        preferences: preferences || {},
       }])
       .select('*, vendors(name), products(name)')
       .single();
     if (error) throw error;
     setQuotes(prev => [data, ...prev]);
+    // A quote request is a meaningful engagement — bump the vendor off the default label.
+    const vendor = vendors.find(v => v.id === vendorId);
+    if (vendor && vendor.label === 'Imported by user') {
+      updateVendor(vendorId, { label: 'Previously quoted' }).catch(() => {});
+    }
     return data;
   };
 
@@ -93,8 +99,23 @@ export function VendorsProvider({ children }) {
     return data;
   };
 
+  const updateVendor = async (id, updates) => {
+    const { data, error } = await supabase
+      .from('vendors')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    setVendors(prev => prev.map(v => (v.id === id ? data : v)));
+    return data;
+  };
+
+  const toggleFavorite = vendor => updateVendor(vendor.id, { favorited: !vendor.favorited });
+  const toggleBlock = vendor => updateVendor(vendor.id, { blocked: !vendor.blocked });
+
   return (
-    <VendorsContext.Provider value={{ vendors, quotes, loading, addVendor, requestQuote, updateQuote, refresh: loadData }}>
+    <VendorsContext.Provider value={{ vendors, quotes, loading, addVendor, requestQuote, updateQuote, updateVendor, toggleFavorite, toggleBlock, refresh: loadData }}>
       {children}
     </VendorsContext.Provider>
   );

@@ -4,6 +4,7 @@ import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { trustTagClass } from '../lib/format.js';
 import { TRUST_LABELS } from './VendorDiscovery.jsx';
+import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 
 const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'launched'];
@@ -11,16 +12,30 @@ const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'laun
 export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { vendors, quotes, requestQuote } = useVendors();
+  const { vendors, quotes, requestQuote, updateVendor, toggleFavorite, toggleBlock } = useVendors();
   const { products } = useProducts();
+
   const [showRequest, setShowRequest] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [targetCost, setTargetCost] = useState('');
+  const [deadline, setDeadline] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+
+  const [notes, setNotes] = useState(null); // null = not yet edited this session
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  const [showEmail, setShowEmail] = useState(false);
+  const [emailAsk, setEmailAsk] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [draftError, setDraftError] = useState(null);
 
   const vendor = vendors.find(v => v.id === id);
   const vendorQuotes = quotes.filter(q => q.vendor_id === id);
   const techPackProducts = products.filter(p => TECHPACK_STAGES.includes(p.stage));
+  const pricePoints = vendorQuotes.filter(q => q.amount != null).map(q => ({ date: q.requested_at, amount: Number(q.amount) }));
 
   if (!vendor) {
     return <div className="content"><EmptyState icon="ph-magnifying-glass" title="Vendor not found" sub="This vendor profile doesn't exist yet." /></div>;
@@ -31,15 +46,70 @@ export default function VendorDetail() {
     if (!selectedProduct) return;
     setSending(true);
     try {
-      await requestQuote({ vendorId: vendor.id, productId: selectedProduct, message });
+      const preferences = {};
+      if (quantity) preferences.quantity = quantity;
+      if (targetCost) preferences.targetUnitCost = targetCost;
+      if (deadline) preferences.deadline = deadline;
+      await requestQuote({ vendorId: vendor.id, productId: selectedProduct, message, preferences });
       setShowRequest(false);
-      setSelectedProduct('');
-      setMessage('');
+      setSelectedProduct(''); setQuantity(''); setTargetCost(''); setDeadline(''); setMessage('');
     } catch (err) {
       alert('Could not send request: ' + err.message);
     } finally {
       setSending(false);
     }
+  };
+
+  const saveNotes = async () => {
+    setSavingNotes(true);
+    try {
+      await updateVendor(vendor.id, { notes });
+    } catch (err) {
+      alert('Could not save notes: ' + err.message);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const handleBlock = async () => {
+    try {
+      await toggleBlock(vendor);
+      if (!vendor.blocked) navigate('/vendors');
+    } catch (err) {
+      alert('Could not update vendor: ' + err.message);
+    }
+  };
+
+  const draftEmail = async () => {
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const selectedProductObj = products.find(p => p.id === selectedProduct);
+      const res = await fetch('http://localhost:3001/api/draft-vendor-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendorName: vendor.name,
+          productName: selectedProductObj?.name,
+          garmentType: selectedProductObj?.category,
+          preferences: { quantity, targetUnitCost: targetCost, deadline },
+          ask: emailAsk,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setDraft(data.draft);
+    } catch (err) {
+      setDraftError(err.message || 'Could not draft that email.');
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  const openInMailClient = () => {
+    if (!draft) return;
+    const mailto = `mailto:?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
+    window.location.href = mailto;
   };
 
   return (
@@ -53,12 +123,26 @@ export default function VendorDetail() {
           <div className="page-sub">{vendor.category || 'Uncategorized'} · {vendor.location || 'Unknown location'}</div>
         </div>
         <div className="topbar-right">
+          <button className="canvas-icon-btn" title={vendor.favorited ? 'Unfavorite' : 'Favorite'} onClick={() => toggleFavorite(vendor)} style={{ color: vendor.favorited ? 'var(--c-vendors)' : 'var(--ink-3)' }}>
+            <i className={vendor.favorited ? 'ph-fill ph-star' : 'ph ph-star'} />
+          </button>
+          <button className="canvas-icon-btn" title={vendor.blocked ? 'Unblock' : 'Block vendor'} onClick={handleBlock} style={{ color: vendor.blocked ? 'var(--red)' : 'var(--ink-3)' }}>
+            <i className="ph ph-prohibit" />
+          </button>
           <span className={trustTagClass(TRUST_LABELS.find(t => t.label === vendor.label)?.tone)}>{vendor.label}</span>
+          <button className="btn btn-sm" onClick={() => setShowEmail(s => !s)}><i className="ph ph-envelope" /> Draft email</button>
           <button className="btn btn-primary" onClick={() => setShowRequest(s => !s)}><i className="ph ph-file-text" /> Request a quote</button>
         </div>
       </div>
 
       <div className="content">
+        {vendor.blocked && (
+          <div className="alert" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
+            <i className="ph ph-prohibit" style={{ marginTop: 1 }} />
+            This vendor is blocked and won't appear in your main vendor list or search results.
+          </div>
+        )}
+
         <div className="stats-row">
           <div className="stat-card" style={{ '--stat-accent': 'var(--c-vendors)' }}>
             <div className="stat-label">Rating</div>
@@ -78,6 +162,43 @@ export default function VendorDetail() {
           </div>
         </div>
 
+        {showEmail && (
+          <div className="card-raised enter" style={{ marginBottom: 24 }}>
+            <div className="corner-fold" style={{ '--fold-color': 'var(--c-vendors)' }} />
+            <div className="card-header"><span className="card-title">Draft an email</span></div>
+            <div className="card-body">
+              {!draft ? (
+                <>
+                  <div className="form-group" style={{ marginBottom: 16 }}>
+                    <label className="form-label">What do you want to say or ask?</label>
+                    <textarea className="form-textarea" placeholder="e.g. Introduce the brand and ask if they can do a 300-unit run of heavyweight fleece hoodies" value={emailAsk} onChange={e => setEmailAsk(e.target.value)} />
+                    <div className="form-hint">Uses whatever quantity / target cost / deadline you've entered in the quote form above, if any. AI-written — review before sending.</div>
+                  </div>
+                  {draftError && <div className="form-hint" style={{ color: 'var(--red)', marginBottom: 12 }}>{draftError}</div>}
+                  <button className="btn btn-primary" onClick={draftEmail} disabled={drafting}>
+                    <i className="ph ph-magic-wand" /> {drafting ? 'Drafting…' : 'Draft with AI'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Subject</label>
+                    <input className="form-input" value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 16 }}>
+                    <label className="form-label">Body</label>
+                    <textarea className="form-textarea" style={{ minHeight: 160 }} value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" onClick={openInMailClient}><i className="ph ph-paper-plane-tilt" /> Open in email app</button>
+                    <button className="btn btn-sm" onClick={() => setDraft(null)}>Start over</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {showRequest && (
           <form className="card-raised enter" style={{ marginBottom: 24 }} onSubmit={handleSend}>
             <div className="corner-fold" style={{ '--fold-color': 'var(--c-vendors)' }} />
@@ -91,9 +212,23 @@ export default function VendorDetail() {
                 </select>
                 {techPackProducts.length === 0 && <div className="form-hint">No products have a tech pack yet — convert a design first.</div>}
               </div>
+              <div className="grid-3">
+                <div className="form-group">
+                  <label className="form-label">Quantity</label>
+                  <input className="form-input" placeholder="e.g. 300 units" value={quantity} onChange={e => setQuantity(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Target unit cost</label>
+                  <input className="form-input" placeholder="e.g. $18.00" value={targetCost} onChange={e => setTargetCost(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Deadline</label>
+                  <input className="form-input" placeholder="e.g. Sept 15" value={deadline} onChange={e => setDeadline(e.target.value)} />
+                </div>
+              </div>
               <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label">Message</label>
-                <textarea className="form-textarea" placeholder="Target quantity, deadline, anything the vendor should know up front" value={message} onChange={e => setMessage(e.target.value)} />
+                <label className="form-label">Anything else the vendor should know</label>
+                <textarea className="form-textarea" placeholder="Optional notes" value={message} onChange={e => setMessage(e.target.value)} />
               </div>
               <button className="btn btn-primary" type="submit" disabled={sending || !selectedProduct}>
                 <i className="ph ph-paper-plane-tilt" /> {sending ? 'Sending…' : 'Send request'}
@@ -102,12 +237,36 @@ export default function VendorDetail() {
           </form>
         )}
 
-        <div className="section-label">Specialties</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 28 }}>
-          {(vendor.specialties || []).length
-            ? vendor.specialties.map(s => <span key={s} className="tag tag-neutral">{s}</span>)
-            : <span style={{ fontSize: 13, color: 'var(--ink-4)', fontStyle: 'italic' }}>None added yet</span>}
+        <div className="grid-2" style={{ marginBottom: 28 }}>
+          <div>
+            <div className="section-label">Specialties</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(vendor.specialties || []).length
+                ? vendor.specialties.map(s => <span key={s} className="tag tag-neutral">{s}</span>)
+                : <span style={{ fontSize: 13, color: 'var(--ink-4)', fontStyle: 'italic' }}>None added yet</span>}
+            </div>
+          </div>
+          <div>
+            <div className="section-label">Your notes</div>
+            <textarea
+              className="form-textarea" style={{ minHeight: 60 }}
+              placeholder="Private notes — quality preferences, past issues, anything worth remembering"
+              value={notes === null ? (vendor.notes || '') : notes}
+              onChange={e => setNotes(e.target.value)}
+              onBlur={() => notes !== null && notes !== (vendor.notes || '') && saveNotes()}
+            />
+            {savingNotes && <div className="form-hint">Saving…</div>}
+          </div>
         </div>
+
+        {pricePoints.length >= 2 && (
+          <>
+            <div className="section-label">Price over time</div>
+            <div className="card-raised" style={{ marginBottom: 28, padding: 18 }}>
+              <PriceHistoryChart points={pricePoints} />
+            </div>
+          </>
+        )}
 
         <div className="section-label">Quote history</div>
         {vendorQuotes.length ? (
@@ -116,7 +275,10 @@ export default function VendorDetail() {
               <div className="list-row" key={q.id}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{q.products?.name || 'Unknown product'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>Requested {new Date(q.requested_at).toLocaleDateString()}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+                    Requested {new Date(q.requested_at).toLocaleDateString()}
+                    {q.preferences?.quantity && ` · ${q.preferences.quantity}`}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   {q.amount && <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>${Number(q.amount).toFixed(2)}/unit</span>}
