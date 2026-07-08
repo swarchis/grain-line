@@ -55,7 +55,8 @@ npm install
 Create an `api/.env` file:
 ```text
 PORT=3001
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+ANTHROPIC_API_KEY=dont_use_anthropic_yet
+GEMINI_API_KEY=use_gemini_for_now
 ```
 Start the backend:
 ```bash
