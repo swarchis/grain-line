@@ -106,6 +106,19 @@ export function ProductsProvider({ children }) {
     return data;
   };
 
+  const updateBrand = async (updates) => {
+    if (!activeBrand) throw new Error("No active brand");
+    const { data, error } = await supabase
+      .from('brands')
+      .update(updates)
+      .eq('id', activeBrand.id)
+      .select()
+      .single();
+    if (error) throw error;
+    setActiveBrand(data);
+    return data;
+  };
+
   const createDesign = async ({ garmentType, baseType, silhouette, colorway, file, collectionId }) => {
     if (!activeBrand) throw new Error("No active brand found");
 
@@ -158,7 +171,7 @@ export function ProductsProvider({ children }) {
   const getUploadedFile = id => uploadedFiles.current.get(id) || null;
 
   return (
-    <ProductsContext.Provider value={{ products, collections, moveProduct, updateProduct, designs, createDesign, createCollection, getUploadedFile, activeBrand, loading }}>
+    <ProductsContext.Provider value={{ products, collections, moveProduct, updateProduct, designs, createDesign, createCollection, updateBrand, getUploadedFile, activeBrand, loading }}>
       {children}
     </ProductsContext.Provider>
   );

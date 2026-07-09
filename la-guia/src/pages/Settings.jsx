@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { brands, activeBrandId, RISK_LEVELS } from '../data/mockData.js';
+import React, { useState, useEffect } from 'react';
 import TabBar from '../components/TabBar.jsx';
+import { useProducts } from '../context/ProductsContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const TABS = [
   { key: 'profile', label: 'Profile', icon: 'ph-user-circle' },
@@ -9,6 +10,8 @@ const TABS = [
   { key: 'notifications', label: 'Notifications', icon: 'ph-bell' },
   { key: 'risk', label: 'Risk Tolerance', icon: 'ph-gauge' },
 ];
+
+const RISK_LEVELS = ['Conservative', 'Balanced', 'Aggressive'];
 
 function Toggle({ defaultOn = true }) {
   const [on, setOn] = useState(defaultOn);
@@ -27,8 +30,52 @@ function Toggle({ defaultOn = true }) {
 
 export default function Settings() {
   const [tab, setTab] = useState('profile');
-  const brand = brands.find(b => b.id === activeBrandId);
-  const [risk, setRisk] = useState(brand.globalRisk);
+  const { activeBrand, updateBrand } = useProducts();
+  const { user } = useAuth();
+  
+  const [saving, setSaving] = useState(false);
+  
+  // Form State
+  const [form, setForm] = useState({
+    name: '',
+    target_customer: '',
+    quality_tier: 'Premium contemporary',
+    budget_philosophy: '',
+    sustainability: '',
+    manufacturer_preferences: '',
+    global_risk: 'Balanced'
+  });
+
+  // Sync state when activeBrand loads
+  useEffect(() => {
+    if (activeBrand) {
+      setForm({
+        name: activeBrand.name || '',
+        target_customer: activeBrand.target_customer || '',
+        quality_tier: activeBrand.quality_tier || 'Premium contemporary',
+        budget_philosophy: activeBrand.budget_philosophy || '',
+        sustainability: activeBrand.sustainability || '',
+        manufacturer_preferences: activeBrand.manufacturer_preferences || '',
+        global_risk: activeBrand.global_risk || 'Balanced'
+      });
+    }
+  }, [activeBrand]);
+
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateBrand(form);
+      alert("Settings saved successfully!");
+    } catch (err) {
+      alert("Failed to save settings: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!activeBrand) return <div className="content" style={{ textAlign: 'center', padding: 40 }}><i className="ph ph-spinner ph-spin" /></div>;
 
   return (
     <>
@@ -40,7 +87,9 @@ export default function Settings() {
           </div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-primary"><i className="ph ph-check" /> Save</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            <i className="ph ph-check" /> {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
 
@@ -51,10 +100,10 @@ export default function Settings() {
           <div className="card-raised" style={{ maxWidth: 520 }}>
             <div className="card-header"><span className="card-title">Account summary</span></div>
             <div className="card-body">
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Name</span><strong>Founder workspace</strong></div>
+              <div className="list-row" style={{ padding: '10px 0' }}><span>Email</span><strong>{user?.email}</strong></div>
               <div className="list-row" style={{ padding: '10px 0' }}><span>Role</span><strong>Owner</strong></div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Member since</span><strong>Jan 2026</strong></div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Active brands</span><strong>{brands.length}</strong></div>
+              <div className="list-row" style={{ padding: '10px 0' }}><span>Member since</span><strong>{new Date(user?.created_at || Date.now()).toLocaleDateString()}</strong></div>
+              <div className="list-row" style={{ padding: '10px 0' }}><span>Active brand</span><strong>{activeBrand.name}</strong></div>
             </div>
           </div>
         )}
@@ -64,12 +113,20 @@ export default function Settings() {
             <div className="card-raised">
               <div className="card-header"><span className="card-title">Identity</span></div>
               <div className="card-body">
-                <div className="form-group"><label className="form-label">Brand name</label><input className="form-input" defaultValue={brand.name} /></div>
-                <div className="form-group"><label className="form-label">Target customer</label><textarea className="form-textarea" defaultValue={brand.targetCustomer} /></div>
+                <div className="form-group">
+                  <label className="form-label">Brand name</label>
+                  <input className="form-input" value={form.name} onChange={e => f('name', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Target customer</label>
+                  <textarea className="form-textarea" value={form.target_customer} onChange={e => f('target_customer', e.target.value)} placeholder="e.g. Gen Z streetwear enthusiasts looking for heavyweight basics." />
+                </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Quality tier</label>
-                  <select className="form-select" defaultValue={brand.qualityTier}>
-                    <option>Value / accessible</option><option>Premium contemporary</option><option>Luxury / made-to-order</option>
+                  <select className="form-select" value={form.quality_tier} onChange={e => f('quality_tier', e.target.value)}>
+                    <option value="Value / accessible">Value / accessible</option>
+                    <option value="Premium contemporary">Premium contemporary</option>
+                    <option value="Luxury / made-to-order">Luxury / made-to-order</option>
                   </select>
                 </div>
               </div>
@@ -77,9 +134,18 @@ export default function Settings() {
             <div className="card-raised">
               <div className="card-header"><span className="card-title">Production philosophy</span></div>
               <div className="card-body">
-                <div className="form-group"><label className="form-label">Budget philosophy</label><textarea className="form-textarea" defaultValue={brand.budgetPhilosophy} /></div>
-                <div className="form-group"><label className="form-label">Sustainability preferences</label><input className="form-input" defaultValue={brand.sustainability} /></div>
-                <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label">Manufacturer preferences</label><input className="form-input" defaultValue={brand.manufacturerPreferences} /></div>
+                <div className="form-group">
+                  <label className="form-label">Budget philosophy</label>
+                  <textarea className="form-textarea" value={form.budget_philosophy} onChange={e => f('budget_philosophy', e.target.value)} placeholder="e.g. Willing to pay more for higher MOQ if quality is unmatched." />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Sustainability preferences</label>
+                  <input className="form-input" value={form.sustainability} onChange={e => f('sustainability', e.target.value)} placeholder="e.g. Requires GOTS certified cotton." />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Manufacturer preferences</label>
+                  <input className="form-input" value={form.manufacturer_preferences} onChange={e => f('manufacturer_preferences', e.target.value)} placeholder="e.g. Strong preference for Portugal or Italy." />
+                </div>
               </div>
             </div>
           </div>
@@ -119,7 +185,14 @@ export default function Settings() {
               </p>
               <div className="pill-group">
                 {RISK_LEVELS.map(level => (
-                  <button key={level} className={`pill ${risk === level ? 'active' : ''}`} data-risk={level} onClick={() => setRisk(level)}>{level}</button>
+                  <button 
+                    key={level} 
+                    className={`pill ${form.global_risk === level ? 'active' : ''}`} 
+                    data-risk={level} 
+                    onClick={() => f('global_risk', level)}
+                  >
+                    {level}
+                  </button>
                 ))}
               </div>
             </div>
