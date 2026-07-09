@@ -1,3 +1,6 @@
+### `README.md`
+
+```markdown
 # Grainline — Production OS for Independent Clothing Brands
 
 Takes a founder from a rough sketch to a manufactured, sellable product — design, tech pack, vendor sourcing, quoting, and (eventually) production and sales — in one tool instead of a scattered stack of spreadsheets, DMs, and freelance tech-pack files.
@@ -8,7 +11,7 @@ Takes a founder from a rough sketch to a manufactured, sellable product — desi
 
 ## Architecture
 
-```
+```text
 grainline/
 ├── la-guia/                 React + Vite frontend
 │   ├── src/
@@ -34,13 +37,13 @@ grainline/
 
 ## What's real vs. mock
 
-The frontend was scaffolded with static mock data first, then converted page-by-page to real Supabase data. Some pages are still mock — safe to build on, but don't assume their data is live.
+The frontend was scaffolded with static mock data first, then converted page-by-page to real Supabase data. 
 
 **Real (Supabase-backed):**
-Auth · Products · Designs · Tech Packs (BOM + Measurements) · Vendors · Quotes
+Auth · Brands · Products · Designs · Tech Packs · Collections · Materials · Vendors · Quotes · Production Orders (Creation & List view) · Readiness Review
 
 **Still static mock data** (`la-guia/src/data/mockData.js`) — candidates for the next conversion pass:
-`Home.jsx` (stage/collection constants only, products themselves are real) · `Collections.jsx` / `CollectionDetail.jsx` · `MaterialLibrary.jsx` / `MaterialDetail.jsx` · `ProductionOrders.jsx` / `ProductionOrderDetail.jsx` · `ReadinessReview.jsx` · `SalesDashboard.jsx` · `ProductInsights.jsx` · `ContentHub.jsx` · `Settings.jsx` · `NotificationsInbox.jsx` · `TechPackList.jsx` (list view only — `TechPackDetail.jsx` itself is fully real)
+`ProductionOrderDetail.jsx` (Hardcoded to mock data, crashes if given a real ID) · `SalesDashboard.jsx` · `ContentHub.jsx` · `NotificationsInbox.jsx` · `Home.jsx` (Notifications feed only)
 
 ---
 
@@ -49,7 +52,7 @@ Auth · Products · Designs · Tech Packs (BOM + Measurements) · Vendors · Quo
 ### 1. Supabase project
 You need access to the shared Supabase project (ask a teammate for the URL + anon key if you don't have them). Three things live there that aren't all in version control yet:
 
-- **Tables**: `brands`, `products`, `designs`, `tech_packs` were created directly via the Supabase dashboard early on and **aren't captured in a migration file** — if you need to know the exact schema, check the dashboard directly (worth fixing: export these as a `001_initial_schema.sql` at some point).
+- **Tables**: `brands`, `products`, `designs`, `tech_packs`, `materials`, `collections`, `production_orders` were created directly via the Supabase dashboard early on and **aren't captured in a migration file** — if you need to know the exact schema, check the dashboard directly (worth fixing: export these as a `001_initial_schema.sql` at some point).
 - **`vendors` and `quotes` tables**: *are* version-controlled. Run these in the SQL Editor, in order, if they haven't been run yet:
   ```
   supabase/migrations/002_vendors_and_quotes.sql
@@ -121,11 +124,11 @@ All endpoints are `POST`, take/return JSON, and follow the same shape: `{ ok: tr
 
 ## Known gaps / next up
 
-- Export the `brands`/`products`/`designs`/`tech_packs` schema as a real migration file (currently dashboard-only, not reproducible from a clean Supabase project)
-- Convert the remaining mock-data pages listed above to real Supabase tables
-- AI vendor-fit scoring and email drafting are built but not deeply tested against edge cases (vendors with almost no data, products with huge BOMs)
-- `http://localhost:3001` is hardcoded in several frontend files — fine for local dev, will need an env var before any real deployment
-- No production hosting/deploy setup yet — this is entirely local dev right now
+- **Mock Data Bleed:** `ProductionOrderDetail.jsx` needs to be refactored to remove dependencies on `mockData.js` and use Supabase data.
+- **AI Text-to-Silhouette Generation:** The UI allows users to request an AI-generated silhouette, but the backend implementation to convert text to SVG is missing.
+- **Schema Migrations:** Export the `brands`/`products`/`designs`/`tech_packs`/`materials`/`collections`/`production_orders` schema as a real `001_initial_schema.sql` migration file.
+- **Environment Variables:** `http://localhost:3001` is hardcoded in several frontend files — fine for local dev, will need an env var before any real deployment.
+- **Production Hosting:** No production hosting/deploy setup yet — this is entirely local dev right now.
 
 ## Gotchas (read before you lose an hour to one of these)
 
@@ -133,3 +136,4 @@ All endpoints are `POST`, take/return JSON, and follow the same shape: `{ ok: tr
 - **Gemini Search grounding needs billing** — confirmed by direct testing (429 on the free tier regardless of tool schema used). Don't reach for it; use Tavily + a plain Gemini call instead, per `/api/search-vendors`.
 - **Photopea's own layout doesn't reliably resize** after its container changes size (confirmed live) — the fullscreen toggle works around this by capturing the canvas, remounting Photopea fresh at the new size, and reopening the capture. If you touch the Design Studio canvas, keep that pattern rather than just resizing the iframe.
 - **Two dev servers, two `.env` files** — `api/.env` (backend secrets) and `la-guia/.env.local` (frontend, Supabase only — anon key is safe to expose client-side by design). Never put the Gemini or Tavily key in a `VITE_`-prefixed variable; that would ship it to the browser.
+```
