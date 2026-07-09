@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
-import { STAGES, collections, notifications } from '../data/mockData.js';
+import { STAGES, notifications } from '../data/mockData.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useProduction } from '../context/ProductionContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -115,7 +115,7 @@ const SWATCH_TONES = ['gold', 'sage', 'clay', 'ink'];
 export default function Home() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { products, moveProduct } = useProducts();
+  const { products, collections, moveProduct } = useProducts();
   const { orders: productionOrders } = useProduction();
   const [draggingId, setDraggingId] = useState(null);
   const [overStage, setOverStage] = useState(null);
@@ -148,7 +148,7 @@ export default function Home() {
   };
 
   const previewCollections = collections.slice(0, 2).map(c => {
-    const members = products.filter(p => p.collectionId === c.id);
+    const members = products.filter(p => p.collection_id === c.id);
     const inMotion = members.some(p => ['sampling', 'production'].includes(p.stage));
     const inDev = members.some(p => ['techpack', 'sourcing'].includes(p.stage));
     return { ...c, memberCount: members.length, status: inMotion ? 'In production' : inDev ? 'In development' : 'Concept' };

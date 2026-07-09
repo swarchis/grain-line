@@ -7,6 +7,7 @@ const ProductsContext = createContext(null);
 export function ProductsProvider({ children }) {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [designs, setDesigns] = useState({});
   const [activeBrand, setActiveBrand] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +17,7 @@ export function ProductsProvider({ children }) {
   useEffect(() => {
     if (!user) {
       setProducts([]);
+      setCollections([]);
       setDesigns({});
       setLoading(false);
       return;
@@ -34,14 +36,23 @@ export function ProductsProvider({ children }) {
         if (brandData) {
           setActiveBrand(brandData);
           
+          // Load Collections
+          const { data: collData } = await supabase
+            .from('collections')
+            .select('*')
+            .eq('brand_id', brandData.id)
+            .order('created_at', { ascending: false });
+          setCollections(collData || []);
+
+          // Load Products
           const { data: prodData } = await supabase
             .from('products')
             .select('*')
             .eq('brand_id', brandData.id)
             .order('created_at', { ascending: false });
-            
           setProducts(prodData || []);
 
+          // Load Designs
           const { data: designData } = await supabase
             .from('designs')
             .select('*');
@@ -55,7 +66,7 @@ export function ProductsProvider({ children }) {
               colorway: d.colorway,
               status: d.status,
               layers: [{ name: d.base_type === 'upload' ? 'Uploaded mockup' : 'Silhouette base', visible: true }],
-              analysis: d.analysis, // <--- Now pulling the real analysis!
+              analysis: d.analysis,
             };
           });
           setDesigns(designsMap);
@@ -76,9 +87,6 @@ export function ProductsProvider({ children }) {
     if (error) console.error('Failed to move product', error);
   };
 
-  // General-purpose product field update — budget, name, risk, etc. New products
-  // start at budget: 0 with no form anywhere to set it, so this is what backs
-  // whatever UI ends up giving founders a place to enter it.
   const updateProduct = async (id, updates) => {
     const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single();
     if (error) throw error;
@@ -86,7 +94,19 @@ export function ProductsProvider({ children }) {
     return data;
   };
 
-  const createDesign = async ({ garmentType, baseType, silhouette, colorway, file }) => {
+  const createCollection = async ({ name, launchWindow }) => {
+    if (!activeBrand) throw new Error("No active brand");
+    const { data, error } = await supabase
+      .from('collections')
+      .insert([{ brand_id: activeBrand.id, name, launch_window: launchWindow }])
+      .select()
+      .single();
+    if (error) throw error;
+    setCollections(prev => [data, ...prev]);
+    return data;
+  };
+
+  const createDesign = async ({ garmentType, baseType, silhouette, colorway, file, collectionId }) => {
     if (!activeBrand) throw new Error("No active brand found");
 
     const { data: productData, error: prodError } = await supabase
@@ -98,7 +118,8 @@ export function ProductsProvider({ children }) {
         stage: 'concept',
         risk: 'Balanced',
         budget: 0,
-        readiness: 4
+        readiness: 4,
+        collection_id: collectionId || null
       }])
       .select()
       .single();
@@ -137,7 +158,7 @@ export function ProductsProvider({ children }) {
   const getUploadedFile = id => uploadedFiles.current.get(id) || null;
 
   return (
-    <ProductsContext.Provider value={{ products, moveProduct, updateProduct, designs, createDesign, getUploadedFile, activeBrand, loading }}>
+    <ProductsContext.Provider value={{ products, collections, moveProduct, updateProduct, designs, createDesign, createCollection, getUploadedFile, activeBrand, loading }}>
       {children}
     </ProductsContext.Provider>
   );

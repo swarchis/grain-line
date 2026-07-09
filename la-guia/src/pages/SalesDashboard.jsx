@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { salesData } from '../data/mockData.js';
 import { currency } from '../lib/format.js';
+import { useProducts } from '../context/ProductsContext.jsx';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 
@@ -10,7 +12,10 @@ const TABS = [
 ];
 
 export default function SalesDashboard() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState('overview');
+  const { products, loading } = useProducts();
+  
   const maxRevenue = Math.max(...salesData.monthly.map(m => m.revenue));
 
   return (
@@ -40,8 +45,8 @@ export default function SalesDashboard() {
                 <div className="stat-value">{salesData.totalOrders}</div>
               </div>
               <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
-                <div className="stat-label">Top product</div>
-                <div className="stat-value" style={{ fontSize: 16 }}>{salesData.topProducts[0]?.name}</div>
+                <div className="stat-label">Active Designs</div>
+                <div className="stat-value">{products.length}</div>
               </div>
               <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
                 <div className="stat-label">Avg. order value</div>
@@ -63,17 +68,39 @@ export default function SalesDashboard() {
               </div>
             </div>
 
-            <div className="section-label">Top products</div>
+            <div className="section-label">Your Products (Financial Modeling)</div>
             <div className="card">
-              {salesData.topProducts.map(p => (
-                <div className="list-row" key={p.name}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
-                  <div style={{ display: 'flex', gap: 20, fontFamily: 'var(--mono)', fontSize: 13 }}>
-                    <span>{p.unitsSold} units</span>
-                    <span>{currency(p.revenue)}</span>
+              {loading ? (
+                <div style={{ padding: 20, textAlign: 'center' }}><i className="ph ph-spinner ph-spin" /> Loading products...</div>
+              ) : products.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink-3)' }}>No products created yet.</div>
+              ) : (
+                products.map(p => (
+                  <div 
+                    className="list-row" 
+                    key={p.id} 
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/products/${p.id}/performance`)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <i className="ph ph-tag" style={{ color: 'var(--c-analytics)' }} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span>
+                        <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{p.category}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ textAlign: 'right', marginRight: 16 }}>
+                        <div style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 700 }}>Landed Cost</div>
+                        <div style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{p.financials?.cmtCost ? 'Calculated' : 'Not set'}</div>
+                      </div>
+                      <button className="btn btn-sm">Manage Model <i className="ph ph-arrow-right" /></button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </>
         )}
