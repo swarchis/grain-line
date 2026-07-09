@@ -60,7 +60,14 @@ function SearchResultCard({ result, onAdd, adding, added }) {
         </div>
         <span className={trustTagClass(isReview ? 'amber' : 'neutral')}>{isReview ? 'Via review source' : 'External source'}</span>
       </div>
-      <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 10 }}>{result.description}</p>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 8 }}>{result.description}</p>
+      {(result.moq || result.leadTime || (result.specialties || []).length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {result.moq && <span className="tag tag-neutral">MOQ {result.moq}</span>}
+          {result.leadTime && <span className="tag tag-neutral">{result.leadTime}</span>}
+          {(result.specialties || []).map(s => <span key={s} className="tag tag-neutral">{s}</span>)}
+        </div>
+      )}
       {isReview && (
         <div style={{ fontSize: 11.5, color: 'var(--amber)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
           <i className="ph ph-info" /> This link goes to a third party talking about the vendor, not the vendor's own page.
@@ -192,7 +199,9 @@ export default function VendorDiscovery() {
         name: result.name,
         category: result.category,
         location: result.location,
-        specialties: [],
+        specialties: result.specialties || [],
+        moq: result.moq ?? null,
+        leadTime: result.leadTime || null,
         sourceNote: result.reviewUrl || result.sourceUrl,
         label: result.sourceType === 'review' ? 'Unverified' : 'External source',
       });

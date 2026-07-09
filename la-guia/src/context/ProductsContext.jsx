@@ -76,6 +76,16 @@ export function ProductsProvider({ children }) {
     if (error) console.error('Failed to move product', error);
   };
 
+  // General-purpose product field update — budget, name, risk, etc. New products
+  // start at budget: 0 with no form anywhere to set it, so this is what backs
+  // whatever UI ends up giving founders a place to enter it.
+  const updateProduct = async (id, updates) => {
+    const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    setProducts(prev => prev.map(p => (p.id === id ? data : p)));
+    return data;
+  };
+
   const createDesign = async ({ garmentType, baseType, silhouette, colorway, file }) => {
     if (!activeBrand) throw new Error("No active brand found");
 
@@ -127,7 +137,7 @@ export function ProductsProvider({ children }) {
   const getUploadedFile = id => uploadedFiles.current.get(id) || null;
 
   return (
-    <ProductsContext.Provider value={{ products, moveProduct, designs, createDesign, getUploadedFile, activeBrand, loading }}>
+    <ProductsContext.Provider value={{ products, moveProduct, updateProduct, designs, createDesign, getUploadedFile, activeBrand, loading }}>
       {children}
     </ProductsContext.Provider>
   );

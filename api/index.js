@@ -305,10 +305,12 @@ For each manufacturer, figure out the source carefully:
 - If the result IS the manufacturer's own website/page (domain matches the company, or it's their official site/contact page), set "sourceType": "vendor" and "sourceUrl" to that link.
 - If the result is actually a THIRD PARTY talking about the manufacturer (an Instagram account that reviews manufacturers, a blog post, a directory listing, a marketplace aggregator page) rather than their own presence, set "sourceType": "review". If the snippet text itself mentions the manufacturer's own website, email, or handle, put THAT as "sourceUrl" and put the original review/mention link as "reviewUrl". If no direct link can be found anywhere, "sourceUrl" should be the review link itself (still set "sourceType": "review").
 
+Also extract, if the text supports it (leave null/empty rather than guessing): specialties (short phrases describing what they specialize in — materials, garment types, techniques), moq (minimum order quantity as a number), leadTime (e.g. "45 days").
+
 Do not invent details not supported by the text. Return a JSON object with exactly this structure:
 {
   "recommended": [
-    { "name": "string", "category": "string", "location": "string or empty", "description": "one sentence on why this matches", "sourceUrl": "string", "sourceType": "vendor" | "review", "reviewUrl": "string or null" }
+    { "name": "string", "category": "string", "location": "string or empty", "description": "one sentence on why this matches", "sourceUrl": "string", "sourceType": "vendor" | "review", "reviewUrl": "string or null", "specialties": ["string"], "moq": <number or null>, "leadTime": "string or null" }
   ],
   "broader": [ same shape as above ]
 }`;
@@ -359,8 +361,11 @@ Do not invent details not supported by the text. Return a JSON object with exact
 app.post('/api/analyze-vendor-fit', async (req, res) => {
   console.log("📥 Received vendor fit request...");
   try {
-    const { vendor, product, brand, quoteHistory } = req.body;
+    const { vendor, product, brand, quoteHistory, bom } = req.body;
     if (!vendor || !product) return res.status(400).json({ ok: false, error: 'Vendor and product are required' });
+    if (!product.budget) {
+      return res.status(400).json({ ok: false, error: 'No budget set for this product — enter one before analyzing, there is nothing to compare vendor cost against otherwise.' });
+    }
 
     const prompt = `You are a sourcing advisor helping a fashion brand founder judge whether a vendor is a good fit for a specific product. Be honest and specific — flag real risks rather than being generically positive.
 
@@ -382,6 +387,9 @@ Budget: $${product.budget}
 Risk tolerance for this product: ${product.risk}
 Factory readiness score: ${product.readiness}%
 
+Bill of materials for this product (this matters a lot — a vendor's fit strongly depends on whether they plausibly work with these specific materials/components):
+${bom && bom.length ? bom.map(b => `- ${b.material}${b.qtyPerUnit ? `, ${b.qtyPerUnit}/unit` : ''}${b.unitCost ? `, ~$${b.unitCost}/unit material cost` : ''}`).join('\n') : 'No BOM on file yet for this product.'}
+
 Brand context:
 Quality tier: ${brand?.qualityTier || 'unknown'}
 Budget philosophy: ${brand?.budgetPhilosophy || 'unknown'}
@@ -390,8 +398,13 @@ Global risk tolerance: ${brand?.globalRisk || 'unknown'}
 
 Quote history with this vendor for this product: ${quoteHistory && quoteHistory.length ? JSON.stringify(quoteHistory) : 'none yet'}
 
-Assess: category/specialty match, whether the MOQ makes sense against the stated budget (rough unit economics — flag it if MOQ × even a low per-unit cost would blow the budget), location/lead-time risk relative to the stated risk tolerance, and anything concerning in the notes or quote history (e.g. a quoted price far above budget, no specialties overlap, no track record at all).
-If there's very little data available (no quotes, no notes, no rating), say so explicitly and reflect that as lower confidence rather than inventing certainty.
+Assess, in this order of importance:
+1. Material/BOM compatibility — do this vendor's specialties/category plausibly cover the specific materials listed in the BOM? Call out any material that looks like a stretch for their stated specialties (e.g. a denim specialist being asked to produce a technical shell fabric).
+2. Whether the MOQ makes sense against the stated budget — rough unit economics: divide budget by MOQ for a rough per-unit ceiling, and compare that against the BOM's per-unit material costs if given (materials alone eating most of that ceiling is a red flag — there's nothing left for labor, overhead, or margin).
+3. Location/lead-time risk relative to the stated risk tolerance.
+4. Anything concerning in the notes or quote history (a quoted price far above budget, no specialties overlap, no track record at all).
+If quote history with this vendor exists, weight it heavily — real quotes are much stronger evidence than category matching alone.
+If there's very little data available (no quotes, no notes, no rating, no BOM), say so explicitly and reflect that as lower confidence rather than inventing certainty.
 
 Return a JSON object with exactly this structure:
 {

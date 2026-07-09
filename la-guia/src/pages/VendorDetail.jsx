@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import { trustTagClass } from '../lib/format.js';
 import { TRUST_LABELS } from './VendorDiscovery.jsx';
 import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
@@ -14,9 +15,10 @@ export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { vendors, quotes, requestQuote, updateVendor, toggleFavorite, toggleBlock } = useVendors();
-  const { products, activeBrand } = useProducts();
+  const { products, activeBrand, updateProduct } = useProducts();
 
   const [fitProduct, setFitProduct] = useState('');
+  const [fitBudget, setFitBudget] = useState('');
   const [analyzingFit, setAnalyzingFit] = useState(false);
   const [fitResult, setFitResult] = useState(null);
   const [fitError, setFitError] = useState(null);
@@ -118,19 +120,50 @@ export default function VendorDetail() {
     window.location.href = mailto;
   };
 
+  const selectFitProduct = productId => {
+    setFitProduct(productId);
+    setFitResult(null);
+    const productObj = products.find(p => p.id === productId);
+    setFitBudget(productObj?.budget ? String(productObj.budget) : '');
+  };
+
   const analyzeFit = async () => {
     if (!fitProduct) return;
     setAnalyzingFit(true);
     setFitError(null);
     try {
-      const productObj = products.find(p => p.id === fitProduct);
+      const budgetValue = fitBudget ? Number(fitBudget) : 0;
+      let productObj = products.find(p => p.id === fitProduct);
+
+      // Persist the budget back to the product if it changed — this is the only
+      // place in the app a founder can actually set it, so it shouldn't vanish
+      // after this one analysis.
+      if (productObj && budgetValue !== productObj.budget) {
+        productObj = await updateProduct(fitProduct, { budget: budgetValue });
+      }
+
+      // Materials matter a lot for whether a vendor can actually make this —
+      // pull the tech pack's BOM in directly rather than just the product category.
+      const { data: techPack } = await supabase
+        .from('tech_packs')
+        .select('bom')
+        .eq('product_id', fitProduct)
+        .single();
+
       const productQuotes = vendorQuotes
         .filter(q => q.product_id === fitProduct)
         .map(q => ({ status: q.status, amount: q.amount, preferences: q.preferences }));
+
       const res = await fetch('http://localhost:3001/api/analyze-vendor-fit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendor, product: productObj, brand: activeBrand, quoteHistory: productQuotes }),
+        body: JSON.stringify({
+          vendor,
+          product: { ...productObj, budget: budgetValue },
+          brand: activeBrand,
+          quoteHistory: productQuotes,
+          bom: techPack?.bom || [],
+        }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -197,17 +230,26 @@ export default function VendorDetail() {
           <div className="card-header"><span className="card-title">AI fit &amp; profitability</span></div>
           <div className="card-body">
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: fitResult ? 18 : 0 }}>
-              <div className="form-group" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
+              <div className="form-group" style={{ flex: 2, minWidth: 220, marginBottom: 0 }}>
                 <label className="form-label">Assess fit for which product?</label>
-                <select className="form-select" value={fitProduct} onChange={e => { setFitProduct(e.target.value); setFitResult(null); }}>
+                <select className="form-select" value={fitProduct} onChange={e => selectFitProduct(e.target.value)}>
                   <option value="" disabled>Choose a product</option>
                   {techPackProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+              </div>
+              <div className="form-group" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
+                <label className="form-label">Budget for this product</label>
+                <input
+                  className="form-input" type="number" placeholder="e.g. 18500"
+                  value={fitBudget} onChange={e => setFitBudget(e.target.value)}
+                  disabled={!fitProduct}
+                />
               </div>
               <button className="btn btn-primary" onClick={analyzeFit} disabled={analyzingFit || !fitProduct}>
                 {analyzingFit ? <><i className="ph ph-circle-notch" /> Analyzing…</> : <><i className="ph ph-magic-wand" /> Analyze fit</>}
               </button>
             </div>
+            {fitProduct && !fitBudget && <div className="form-hint" style={{ marginTop: 8, color: 'var(--amber)' }}>No budget set — the analysis will have nothing to compare cost against. Worth entering one.</div>}
             {techPackProducts.length === 0 && <div className="form-hint" style={{ marginTop: 8 }}>No products have a tech pack yet — convert a design first.</div>}
             {fitError && <div className="form-hint" style={{ color: 'var(--red)', marginTop: 8 }}>{fitError}</div>}
 
