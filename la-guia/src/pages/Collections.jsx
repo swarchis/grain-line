@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { collections } from '../data/mockData.js';
 import { currency, swatchGradient } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { PhotoPanel } from '../components/decor.jsx';
+
+const COVER_TONES = ['gold', 'sage', 'clay', 'ink'];
 
 export default function Collections() {
   const navigate = useNavigate();
@@ -25,11 +28,12 @@ export default function Collections() {
 
       <div className="content">
         <div className="grid-2">
-          {collections.map(c => {
+          {collections.map((c, ci) => {
             const members = products.filter(p => p.collectionId === c.id);
             const totalCost = members.reduce((s, p) => s + p.budget, 0);
             return (
               <div className="card-raised card-hover" key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/collections/${c.id}`)}>
+                <PhotoPanel variant="weave" tone={COVER_TONES[ci % COVER_TONES.length]} aspect="16 / 6" label={c.name} icon="ph-stack" style={{ borderRadius: 'var(--r) var(--r) 0 0', border: 'none', borderBottom: '1px solid var(--border)' }} />
                 <div className="corner-fold" style={{ '--fold-color': 'var(--c-organization)' }} />
                 <div className="card-header">
                   <span className="card-title">{c.name}</span>

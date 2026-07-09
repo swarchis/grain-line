@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import { contentPosts, socialAccounts } from '../data/mockData.js';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { PhotoPanel } from '../components/decor.jsx';
 
 const TABS = [
   { key: 'hub', label: 'Content Hub', icon: 'ph-megaphone' },
   { key: 'calendar', label: 'Calendar', icon: 'ph-calendar' },
   { key: 'accounts', label: 'Accounts', icon: 'ph-link' },
 ];
+
+const POST_TONES = ['gold', 'sage', 'clay', 'ink'];
 
 const PLATFORM_ICON = { instagram: 'ph-instagram-logo', tiktok: 'ph-tiktok-logo', youtube: 'ph-youtube-logo' };
 const STATUS_TAG = { Scheduled: 'tag-blue', Posted: 'tag-green', Draft: 'tag-neutral' };
@@ -49,9 +52,10 @@ export default function ContentHub() {
             </div>
             <div className="section-label">Recent activity</div>
             <div className="card">
-              {contentPosts.slice(0, 3).map(p => (
+              {contentPosts.slice(0, 3).map((p, pi) => (
                 <div className="list-row" key={p.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <PhotoPanel variant="fabric" tone={POST_TONES[pi % POST_TONES.length]} aspect="1 / 1" style={{ width: 36, borderRadius: 'var(--r-sm)' }} />
                     <i className={`ph ${PLATFORM_ICON[p.platform]}`} style={{ color: 'var(--c-content)' }} />
                     <span style={{ fontSize: 13.5 }}>{p.caption}</span>
                   </div>
@@ -91,9 +95,10 @@ export default function ContentHub() {
               </div>
             )}
             <div className="card">
-              {contentPosts.map(p => (
+              {contentPosts.map((p, pi) => (
                 <div className="list-row" key={p.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <PhotoPanel variant="fabric" tone={POST_TONES[pi % POST_TONES.length]} aspect="1 / 1" style={{ width: 36, borderRadius: 'var(--r-sm)' }} />
                     <i className={`ph ${PLATFORM_ICON[p.platform]}`} style={{ color: 'var(--c-content)' }} />
                     <div>
                       <div style={{ fontSize: 13.5 }}>{p.caption}</div>

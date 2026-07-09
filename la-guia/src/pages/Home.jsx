@@ -2,16 +2,21 @@ import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
-import { STAGES, collections } from '../data/mockData.js';
+import { STAGES, collections, notifications } from '../data/mockData.js';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { useProduction } from '../context/ProductionContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
+import { PinnedPhoto, PhotoPanel, WaxSeal, DriedFlower, Thumbtack } from '../components/decor.jsx';
 
 const QUICK_ACTIONS = [
-  { label: 'New design', icon: 'ph-pencil-simple', color: 'var(--c-design)', path: '/design' },
-  { label: 'Import vendor', icon: 'ph-download-simple', color: 'var(--c-vendors)', path: '/vendors' },
-  { label: 'Request quote', icon: 'ph-file-text', color: 'var(--c-vendors)', path: '/quotes' },
-  { label: 'Review readiness', icon: 'ph-check-circle', color: 'var(--c-finalcheck)', path: '/readiness' },
+  { label: 'New Product', desc: 'Start from a sketch or upload', icon: 'ph-plus-circle', color: 'var(--c-design)', path: '/design' },
+  { label: 'Import Vendor', desc: 'Paste a link or notes', icon: 'ph-download-simple', color: 'var(--c-vendors)', path: '/vendors' },
+  { label: 'Request Quote', desc: 'Ask a vendor to bid', icon: 'ph-file-text', color: 'var(--c-vendors)', path: '/quotes' },
+  { label: 'Review Readiness', desc: 'Check stage-gate status', icon: 'ph-check-circle', color: 'var(--c-finalcheck)', path: '/readiness' },
 ];
+
+const NOTIFICATION_DOT = { success: 'var(--green)', info: 'var(--blue)', warning: 'var(--amber)' };
 
 function stageColor(stageKey) {
   const s = STAGES.find(st => st.key === stageKey);
@@ -105,19 +110,32 @@ function PieceCard({ p, dragging, onDragStart, onDragEnd }) {
   );
 }
 
+const SWATCH_TONES = ['gold', 'sage', 'clay', 'ink'];
+
 export default function Home() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { products, moveProduct } = useProducts();
+  const { orders: productionOrders } = useProduction();
   const [draggingId, setDraggingId] = useState(null);
   const [overStage, setOverStage] = useState(null);
 
   const now = new Date();
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const displayName = user?.email
+    ? user.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : 'Founder';
 
   const inProduction = products.filter(p => !['concept', 'launched'].includes(p.stage)).length;
-  const avgReadiness = Math.round(products.reduce((s, p) => s + p.readiness, 0) / products.length);
+  const avgReadiness = products.length ? Math.round(products.reduce((s, p) => s + p.readiness, 0) / products.length) : 0;
   const totalBudget = products.reduce((s, p) => s + p.budget, 0);
   const gateFlags = products.filter(p => p.readiness < 80 && p.stage === 'sourcing').length;
+
+  // The most active in-motion piece — featured in the hero, mirroring a "spotlight"
+  // product panel. Falls back to the first product if everything is still concept-stage.
+  const featured = products.find(p => !['concept', 'launched'].includes(p.stage)) || products[0];
+  const featuredStageIdx = featured ? STAGES.findIndex(s => s.key === featured.stage) : -1;
+  const nextStage = featuredStageIdx >= 0 && featuredStageIdx < STAGES.length - 1 ? STAGES[featuredStageIdx + 1] : null;
 
   const scrollTo = key => document.getElementById(`stage-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -129,29 +147,98 @@ export default function Home() {
     setOverStage(null);
   };
 
+  const previewCollections = collections.slice(0, 2).map(c => {
+    const members = products.filter(p => p.collectionId === c.id);
+    const inMotion = members.some(p => ['sampling', 'production'].includes(p.stage));
+    const inDev = members.some(p => ['techpack', 'sourcing'].includes(p.stage));
+    return { ...c, memberCount: members.length, status: inMotion ? 'In production' : inDev ? 'In development' : 'Concept' };
+  });
+
+  const ordersByStage = productionOrders.reduce((acc, o) => { acc[o.stage] = (acc[o.stage] || 0) + 1; return acc; }, {});
+  const upcomingOrders = productionOrders
+    .filter(o => o.due_date && o.stage !== 'Delivered')
+    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    .slice(0, 3);
+
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-left">
-          <div>
-            <div className="page-eyebrow" style={{ color: 'var(--c-home)' }}>Home</div>
-            <h1 className="page-title">{greeting}, founder</h1>
-          </div>
-          <div className="page-sub">{products.length} active products · {collections.length} collections</div>
-        </div>
+      <div className="topbar" style={{ border: 'none', background: 'transparent', backdropFilter: 'none' }}>
+        <div className="topbar-left" style={{ flex: 0 }} />
         <div className="topbar-right">
+          <button className="canvas-icon-btn" style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'not-allowed', opacity: 0.55 }} title="Search — not wired up yet">
+            <i className="ph ph-magnifying-glass" />
+          </button>
+          <button className="bell-btn" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', color: 'var(--ink-2)' }} onClick={() => navigate('/notifications')} title="Notifications">
+            <i className="ph ph-bell" style={{ fontSize: 14 }} />
+            {notifications.some(n => !n.read) && <span className="bell-dot" style={{ background: 'var(--accent)', borderColor: 'var(--bg)' }} />}
+          </button>
           <button className="btn btn-primary" onClick={() => navigate('/design')}>
-            <i className="ph ph-plus" /> New product
+            <i className="ph ph-plus" /> New Product
           </button>
         </div>
       </div>
 
-      <div className="content">
+      <div className="content" style={{ paddingTop: 4 }}>
+        <div className="enter" style={{ marginBottom: 28 }}>
+          <h1 style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 32, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.01em' }}>
+            {greeting}, {displayName}
+          </h1>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-3)', marginTop: 6 }}>Here's what's happening in your atelier.</div>
+        </div>
+
+        {/* ── Hero spotlight — pinned photographs on a paper background, not
+             flush bordered tiles ────────────────────────────────────────── */}
+        {featured && (
+          <div className="card-raised enter" style={{ marginBottom: 24, display: 'grid', gridTemplateColumns: '0.85fr 1.3fr 1fr', gap: 26, padding: '26px 28px', overflow: 'visible', position: 'relative', alignItems: 'center' }}>
+            <PinnedPhoto
+              variant="weave" tone={SWATCH_TONES[products.indexOf(featured) % SWATCH_TONES.length]}
+              aspect="3 / 4" tilt={-2.5} pinColor="var(--c-materials)"
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <span className="tag tag-accent">{featured.stage === 'launched' ? 'Launched' : 'In production'}</span>
+                <div style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 24, color: 'var(--ink)', marginTop: 10, lineHeight: 1.2 }}>{featured.name}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4 }}>{featured.category}{featured.collectionId ? ` · ${collections.find(c => c.id === featured.collectionId)?.name || ''}` : ''}</div>
+              </div>
+              <div>
+                <div className="stat-label" style={{ marginBottom: 8 }}>Product progress</div>
+                <div className="readiness">
+                  <div className="readiness-track">
+                    <div className="readiness-fill" style={{ width: `${featured.readiness}%`, background: readinessColor(featured.readiness) }} />
+                    <div className="readiness-gate" style={{ left: '80%' }} />
+                  </div>
+                  <span className="readiness-value">{featured.readiness}%</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 8 }}>Stage: {STAGES.find(s => s.key === featured.stage)?.label}</div>
+              </div>
+              {nextStage && (
+                <div>
+                  <div className="stat-label" style={{ marginBottom: 5 }}>Next step</div>
+                  <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600 }}>Move to {nextStage.label}</div>
+                </div>
+              )}
+              <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(stageLink(featured.stage, featured.id))}>
+                View Product <i className="ph ph-arrow-right" />
+              </button>
+            </div>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 18, alignItems: 'center' }}>
+              <PinnedPhoto variant="sketch" tone="ink" aspect="16 / 11" label="Working sketch" icon="ph-pencil-simple-line" tilt={1.5} pinColor="var(--c-design)" wrapperStyle={{ width: '92%' }} />
+              <div style={{ display: 'flex', gap: 14 }}>
+                <PinnedPhoto variant="weave" tone={SWATCH_TONES[(products.indexOf(featured) + 1) % SWATCH_TONES.length]} aspect="1 / 1" tilt={-3} pinColor="var(--c-vendors)" wrapperStyle={{ width: 82 }} />
+                <PinnedPhoto variant="fabric" tone={SWATCH_TONES[(products.indexOf(featured) + 2) % SWATCH_TONES.length]} aspect="1 / 1" tilt={2.5} pinColor="var(--sage)" wrapperStyle={{ width: 82 }} />
+              </div>
+              <div style={{ position: 'absolute', bottom: -8, right: 4 }}>
+                <WaxSeal initials="AS" size={48} />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="stats-row enter enter-1">
           <div className="stat-card" style={{ '--stat-accent': 'var(--c-home)' }}>
-            <div className="stat-label">In production</div>
-            <div className="stat-value">{inProduction}</div>
-            <div className="stat-delta delta-muted">of {products.length} total products</div>
+            <div className="stat-label">Active products</div>
+            <div className="stat-value">{products.length}</div>
+            <div className="stat-delta delta-muted">{inProduction} in production</div>
           </div>
           <div className="stat-card" style={{ '--stat-accent': 'var(--c-techpack)' }}>
             <div className="stat-label">Avg. factory readiness</div>
@@ -170,40 +257,133 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="section-label enter enter-2">Quick actions</div>
-        <div className="grid-cards enter enter-2" style={{ marginBottom: 32 }}>
-          {QUICK_ACTIONS.map(a => (
-            <div key={a.label} className="card-raised card-hover" style={{ padding: '16px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }} onClick={() => navigate(a.path)}>
-              <div style={{ width: 38, height: 38, borderRadius: '50% 46% 50% 48%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `color-mix(in srgb, ${a.color} 16%, transparent)`, color: a.color, flexShrink: 0 }}>
-                <i className={`ph ${a.icon}`} style={{ fontSize: 18 }} />
-              </div>
-              <span style={{ fontSize: 13.5, fontWeight: 700 }}>{a.label}</span>
+        {/* ── Collections / Quick actions / Notes ────────────────────────── */}
+        <div className="enter enter-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 0.9fr', gap: 18, marginBottom: 30, alignItems: 'stretch' }}>
+          <div className="card-raised" style={{ padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+              <span className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11 }}>Collections</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer' }} onClick={() => navigate('/collections')}>View all →</span>
             </div>
-          ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {previewCollections.map((c, ci) => (
+                <div key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/collections/${c.id}`)}>
+                  <PhotoPanel variant="weave" tone={SWATCH_TONES[ci % SWATCH_TONES.length]} aspect="3 / 4" />
+                  <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700 }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>{c.status} · {c.memberCount} products</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card-raised" style={{ padding: 20 }}>
+            <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 14 }}>Quick actions</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {QUICK_ACTIONS.map(a => (
+                <div key={a.label} className="card-hover" style={{ padding: '12px 12px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => navigate(a.path)}>
+                  <i className={`ph ${a.icon}`} style={{ fontSize: 17, color: a.color }} />
+                  <div style={{ fontSize: 12, fontWeight: 700, marginTop: 8 }}>{a.label}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.3 }}>{a.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card-raised" style={{ padding: '20px 22px', position: 'relative' }}>
+            <div style={{ position: 'absolute', bottom: 16, right: 18 }}>
+              <DriedFlower size={30} />
+            </div>
+            <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 10 }}>Notes from the atelier</div>
+            <p style={{ fontFamily: 'var(--hand)', fontSize: 18, color: 'var(--ink-2)', lineHeight: 1.4, maxWidth: 170 }}>
+              "Discipline in process creates freedom in design."
+            </p>
+          </div>
         </div>
 
-        <div className="section-label enter enter-3">Production flow — drag a piece, or drop it on a stage below</div>
-        <div className="flow-map enter enter-3">
-          {STAGES.map((stage, i) => {
-            const color = stageColor(stage.key);
-            const count = products.filter(p => p.stage === stage.key).length;
-            const prevColor = i > 0 ? stageColor(STAGES[i - 1].key) : color;
-            return (
-              <React.Fragment key={stage.key}>
-                {i > 0 && <div className="flow-map-line" style={{ '--fm-line': prevColor }} />}
-                <div
-                  className="flow-map-node"
-                  onClick={() => scrollTo(stage.key)}
-                  onDragOver={e => { e.preventDefault(); setOverStage(stage.key); }}
-                  onDrop={e => handleDrop(e, stage.key)}
-                >
-                  <div className="flow-map-dot" style={{ '--fm-color': color, outline: overStage === stage.key ? `2px solid ${color}` : 'none', outlineOffset: 2 }}>{count}</div>
-                  <div className="flow-map-label">{stage.label}</div>
-                </div>
-              </React.Fragment>
-            );
-          })}
+        {/* ── Production flow / status ────────────────────────────────────── */}
+        <div className="enter enter-3" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 30, alignItems: 'stretch' }}>
+          <div className="card-raised" style={{ padding: 22 }}>
+            <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 4 }}>Production flow</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 14 }}>Drag a piece below, or drop it on a stage here</div>
+            <div className="flow-map" style={{ marginBottom: 8 }}>
+              {STAGES.map((stage, i) => {
+                const color = stageColor(stage.key);
+                const count = products.filter(p => p.stage === stage.key).length;
+                const prevColor = i > 0 ? stageColor(STAGES[i - 1].key) : color;
+                return (
+                  <React.Fragment key={stage.key}>
+                    {i > 0 && <div className="flow-map-line" style={{ '--fm-line': prevColor }} />}
+                    <div
+                      className="flow-map-node"
+                      onClick={() => scrollTo(stage.key)}
+                      onDragOver={e => { e.preventDefault(); setOverStage(stage.key); }}
+                      onDrop={e => handleDrop(e, stage.key)}
+                    >
+                      <div className="flow-map-dot" style={{ '--fm-color': color, outline: overStage === stage.key ? `2px solid ${color}` : 'none', outlineOffset: 2 }}>{count}</div>
+                      <div className="flow-map-label">{stage.label}</div>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            <button className="btn btn-sm" onClick={() => scrollTo('concept')}>View production plan <i className="ph ph-arrow-right" /></button>
+          </div>
+
+          <div className="card-raised" style={{ padding: 22, position: 'relative', overflow: 'hidden' }}>
+            <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 14 }}>Production orders</div>
+            <div className="stat-strip" style={{ marginBottom: 16 }}>
+              <div className="stat-strip-seg">
+                <div className="stat-strip-value">{ordersByStage['Sampling'] || 0}</div>
+                <div className="stat-strip-label">Sampling</div>
+              </div>
+              <div className="stat-strip-seg">
+                <div className="stat-strip-value">{ordersByStage['In production'] || 0}</div>
+                <div className="stat-strip-label">In production</div>
+              </div>
+              <div className="stat-strip-seg">
+                <div className="stat-strip-value">{ordersByStage['Delivered'] || 0}</div>
+                <div className="stat-strip-label">Delivered</div>
+              </div>
+            </div>
+            <PhotoPanel variant="fabric" tone="clay" aspect="16 / 7" style={{ marginBottom: 12 }} />
+            <span style={{ fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer' }} onClick={() => navigate('/production')}>Go to production →</span>
+          </div>
         </div>
+
+        {/* ── Recent activity / Upcoming / flat-lay ──────────────────────── */}
+        <div className="enter enter-4" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18, marginBottom: 34, alignItems: 'stretch' }}>
+          <div className="card-raised" style={{ padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <span className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11 }}>Recent activity</span>
+            </div>
+            {notifications.slice(0, 4).map(n => (
+              <div key={n.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: NOTIFICATION_DOT[n.type] || 'var(--ink-4)', marginTop: 5, flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)' }}>{n.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>{n.time}</div>
+                </div>
+              </div>
+            ))}
+            <span style={{ fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer', display: 'inline-block', marginTop: 6 }} onClick={() => navigate('/notifications')}>View all activity →</span>
+          </div>
+
+          <div className="card-raised" style={{ padding: 20 }}>
+            <span className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, display: 'block', marginBottom: 6 }}>Upcoming production dates</span>
+            {upcomingOrders.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-4)', fontStyle: 'italic', padding: '14px 0' }}>Nothing scheduled yet.</div>
+            ) : upcomingOrders.map(o => (
+              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)' }}>{o.products?.name || 'Product'}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>{o.due_date}</div>
+              </div>
+            ))}
+            <span style={{ fontSize: 12, color: 'var(--ink-3)', cursor: 'pointer', display: 'inline-block', marginTop: 6 }} onClick={() => navigate('/production')}>View production →</span>
+          </div>
+
+          <PinnedPhoto variant="fabric" tone="ink" tilt={-1.5} pinColor="var(--accent)" aspect="4 / 3" style={{ height: '100%' }} />
+        </div>
+
+        <div className="section-label enter enter-5">All products — drag a piece, or drop it on a stage above</div>
 
         <LayoutGroup>
           {STAGES.map((stage, si) => {

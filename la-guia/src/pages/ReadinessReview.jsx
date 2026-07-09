@@ -8,6 +8,8 @@ export default function ReadinessReview() {
   const navigate = useNavigate();
   const { products } = useProducts();
   const items = products.filter(p => techPacks[p.id]).sort((a, b) => a.readiness - b.readiness);
+  const cleared = items.filter(p => p.readiness >= 80).length;
+  const needsReview = items.length - cleared;
 
   return (
     <>
@@ -22,6 +24,20 @@ export default function ReadinessReview() {
       </div>
 
       <div className="content">
+        <div className="stat-strip" style={{ marginBottom: 22, maxWidth: 420 }}>
+          <div className="stat-strip-seg">
+            <div className="stat-strip-value">{items.length}</div>
+            <div className="stat-strip-label">Total pieces</div>
+          </div>
+          <div className="stat-strip-seg">
+            <div className="stat-strip-value" style={{ color: 'var(--green)' }}>{cleared}</div>
+            <div className="stat-strip-label">Gate cleared</div>
+          </div>
+          <div className="stat-strip-seg">
+            <div className="stat-strip-value" style={{ color: needsReview > 0 ? 'var(--amber)' : 'var(--ink)' }}>{needsReview}</div>
+            <div className="stat-strip-label">Needs review</div>
+          </div>
+        </div>
         <div className="card">
           {items.map(p => {
             const tp = techPacks[p.id];

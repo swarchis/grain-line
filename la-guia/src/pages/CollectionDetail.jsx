@@ -4,6 +4,9 @@ import { collections } from '../data/mockData.js';
 import { currency, riskTagClass, readinessColor, stageLink, swatchGradient } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { PhotoPanel } from '../components/decor.jsx';
+
+const COVER_TONES = { 'fall-capsule-02': 'gold', 'core-basics': 'sage', 'spring-preview': 'clay', 'resort-capsule': 'ink' };
 
 export default function CollectionDetail() {
   const { id } = useParams();
@@ -17,7 +20,7 @@ export default function CollectionDetail() {
   }
 
   const totalCost = members.reduce((s, p) => s + p.budget, 0);
-  const avgReadiness = Math.round(members.reduce((s, p) => s + p.readiness, 0) / members.length);
+  const avgReadiness = members.length ? Math.round(members.reduce((s, p) => s + p.readiness, 0) / members.length) : 0;
 
   return (
     <>
@@ -35,6 +38,8 @@ export default function CollectionDetail() {
       </div>
 
       <div className="content">
+        <PhotoPanel variant="weave" tone={COVER_TONES[collection.id] || 'gold'} aspect="21 / 6" label={collection.name} icon="ph-stack" style={{ marginBottom: 24 }} />
+
         <div className="stats-row">
           <div className="stat-card" style={{ '--stat-accent': 'var(--c-organization)' }}>
             <div className="stat-label">Products</div>
