@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS public.brands (
       "quotes": true,
       "materials": true,
       "timeline": true
-    }'::jsonb
+    }'::jsonb,
+    plan_tier TEXT DEFAULT 'free',
+    stripe_customer_id TEXT,
+    stripe_subscription_id TEXT
 );
 
 -- 2. COLLECTIONS
@@ -56,7 +59,8 @@ CREATE TABLE IF NOT EXISTS public.designs (
     colorway TEXT,
     status TEXT DEFAULT 'Sketching',
     created_at TIMESTAMPTZ DEFAULT now(),
-    analysis JSONB DEFAULT '{}'::jsonb
+    analysis JSONB DEFAULT '{}'::jsonb,
+    ai_paths JSONB DEFAULT NULL
 );
 
 -- 5. TECH PACKS
@@ -142,18 +146,75 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 );
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their own brand notifications" ON public.notifications FOR SELECT USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid()));
+CREATE POLICY "Users can update their own brand notifications" ON public.notifications FOR UPDATE USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid()));
+CREATE POLICY "Users can insert their own brand notifications" ON public.notifications FOR INSERT WITH CHECK (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid()));
 
-CREATE POLICY "Users can view their own brand notifications" 
-ON public.notifications FOR SELECT USING (
-  brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid())
+-- 11. USER PREFERENCES
+CREATE TABLE IF NOT EXISTS public.user_preferences (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT,
+    theme TEXT DEFAULT 'light',
+    onboarding_completed BOOLEAN DEFAULT false,
+    show_shortcut_hints BOOLEAN DEFAULT true,
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE POLICY "Users can update their own brand notifications" 
-ON public.notifications FOR UPDATE USING (
-  brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid())
+ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own preferences" ON public.user_preferences FOR ALL USING (user_id = auth.uid());
+
+-- 12. TEAM MEMBERS
+CREATE TABLE IF NOT EXISTS public.brand_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    invited_email TEXT NOT NULL,
+    role TEXT DEFAULT 'viewer',
+    status TEXT DEFAULT 'pending',
+    invited_at TIMESTAMPTZ DEFAULT now(),
+    joined_at TIMESTAMPTZ,
+    UNIQUE(brand_id, invited_email)
 );
 
-CREATE POLICY "Users can insert their own brand notifications" 
-ON public.notifications FOR INSERT WITH CHECK (
-  brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid())
+ALTER TABLE public.brand_members ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view members of their brands" ON public.brand_members FOR SELECT USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND status = 'active')));
+CREATE POLICY "Admins can manage team members" ON public.brand_members FOR ALL USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND role IN ('admin', 'owner'))));
+
+-- 13. AI USAGE
+CREATE TABLE IF NOT EXISTS public.ai_usage_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    feature TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.ai_usage_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their brand's AI usage" ON public.ai_usage_log FOR SELECT USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND status = 'active')));
+CREATE POLICY "Users can log their brand's AI usage" ON public.ai_usage_log FOR INSERT WITH CHECK (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND status = 'active')));
+
+-- 14. SHOPIFY INTEGRATION
+CREATE TABLE IF NOT EXISTS public.store_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    platform TEXT DEFAULT 'shopify',
+    shop_domain TEXT NOT NULL,
+    access_token TEXT,
+    connected_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(brand_id, platform)
+);
+
+ALTER TABLE public.store_connections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their store connections" ON public.store_connections FOR ALL USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND status = 'active')));
+
+CREATE TABLE IF NOT EXISTS public.sales_data (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    revenue NUMERIC DEFAULT 0,
+    orders_count INT4 DEFAULT 0,
+    UNIQUE(brand_id, product_id, month)
+);
+
+ALTER TABLE public.sales_data ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their sales data" ON public.sales_data FOR SELECT USING (brand_id IN (SELECT id FROM public.brands WHERE user_id = auth.uid() OR id IN (SELECT brand_id FROM public.brand_members WHERE user_id = auth.uid() AND status = 'active')));

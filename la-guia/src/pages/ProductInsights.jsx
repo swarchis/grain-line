@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { currency, percent, riskTagClass } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { useSales } from '../context/SalesContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import FlowStepper from '../components/FlowStepper.jsx';
 import TabBar from '../components/TabBar.jsx';
@@ -15,41 +16,34 @@ const TABS = [
 export default function ProductInsights() {
   const { id } = useParams();
   const { products, updateProduct } = useProducts();
+  const { connection, productSales } = useSales();
   const [tab, setTab] = useState('financial');
   
   const product = products.find(p => p.id === id);
+  const thisProductSales = productSales[id] || [];
   
   const [bomCost, setBomCost] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Financial Inputs State
   const [form, setForm] = useState({
-    cmtCost: '',       // Cut, Make, Trim (Factory cost)
-    shippingCost: '',  // Shipping & Duties per unit
-    retailPrice: '',   // Target retail price
-    wholesalePrice: '',// Target wholesale price
-    fixedCosts: '',    // Patternmaking, samples, marketing shoot
+    cmtCost: '',
+    shippingCost: '',
+    retailPrice: '',
+    wholesalePrice: '',
+    fixedCosts: '',
   });
 
   useEffect(() => {
     async function loadData() {
       if (!product) return;
-      
-      // 1. Load the Tech Pack to calculate exact material cost
       try {
-        const { data: tpData } = await supabase
-          .from('tech_packs')
-          .select('bom')
-          .eq('product_id', id)
-          .single();
-          
+        const { data: tpData } = await supabase.from('tech_packs').select('bom').eq('product_id', id).single();
         if (tpData && tpData.bom) {
           const totalBom = tpData.bom.reduce((sum, item) => sum + ((parseFloat(item.qtyPerUnit) || 0) * (parseFloat(item.unitCost) || 0)), 0);
           setBomCost(totalBom);
         }
 
-        // 2. Load existing financial model from product
         if (product.financials) {
           setForm({
             cmtCost: product.financials.cmtCost || '',
@@ -85,21 +79,19 @@ export default function ProductInsights() {
     }
   };
 
-  // --- Core Math ---
   const num = val => parseFloat(val) || 0;
   
-  // Total cost to make one unit and get it to the warehouse
   const landedCost = bomCost + num(form.cmtCost) + num(form.shippingCost);
-  
-  // Margins
   const retailProfit = num(form.retailPrice) - landedCost;
   const retailMargin = num(form.retailPrice) > 0 ? (retailProfit / num(form.retailPrice)) * 100 : 0;
-  
   const wholesaleProfit = num(form.wholesalePrice) - landedCost;
   const wholesaleMargin = num(form.wholesalePrice) > 0 ? (wholesaleProfit / num(form.wholesalePrice)) * 100 : 0;
-
-  // Break Even: How many units do I need to sell to pay off the fixed development costs?
+  
+  // Break Even & Progress
   const breakEvenUnits = retailProfit > 0 ? Math.ceil(num(form.fixedCosts) / retailProfit) : 0;
+  const totalSold = thisProductSales.reduce((s, m) => s + m.orders_count, 0);
+  const totalRev = thisProductSales.reduce((s, m) => s + m.revenue, 0);
+  const breakEvenProgress = breakEvenUnits > 0 ? Math.min((totalSold / breakEvenUnits) * 100, 100) : 0;
 
   return (
     <>
@@ -133,7 +125,6 @@ export default function ProductInsights() {
           </div>
         ) : tab === 'financial' ? (
           <>
-            {/* Top KPI Row */}
             <div className="stats-row">
               <div className="stat-card" style={{ '--stat-accent': 'var(--c-materials)' }}>
                 <div className="stat-label">Total Landed Cost</div>
@@ -162,7 +153,6 @@ export default function ProductInsights() {
             </div>
 
             <div className="grid-2">
-              {/* Left Column: Variable Costs */}
               <div className="card-raised">
                 <div className="card-header"><span className="card-title">Variable Costs (Per Unit)</span></div>
                 <div className="card-body">
@@ -197,7 +187,6 @@ export default function ProductInsights() {
                 </div>
               </div>
 
-              {/* Right Column: Revenue & Fixed Costs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div className="card-raised">
                   <div className="card-header"><span className="card-title">Pricing Strategy</span></div>
@@ -240,12 +229,43 @@ export default function ProductInsights() {
             </div>
           </>
         ) : (
-          <EmptyState 
-            icon="ph-plug" 
-            color="var(--c-analytics)" 
-            title="Shopify Not Connected" 
-            sub="Live sell-through, inventory risk, and real-time sales data will appear here once you connect your storefront in Settings." 
-          />
+          !connection ? (
+            <EmptyState icon="ph-plug" color="var(--c-analytics)" title="Shopify Not Connected" sub="Live sell-through, inventory risk, and real-time sales data will appear here once you connect your storefront in the Sales Dashboard." />
+          ) : thisProductSales.length === 0 ? (
+            <EmptyState icon="ph-chart-line-up" color="var(--c-analytics)" title="No Sales Data Yet" sub="Shopify is connected, but no sales for this specific product have synced yet." />
+          ) : (
+            <div className="grid-2">
+              <div className="card-raised">
+                <div className="card-header"><span className="card-title">Break-Even Tracking</span></div>
+                <div className="card-body">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{totalSold} units sold</span>
+                    <span style={{ fontSize: 13.5, color: 'var(--ink-3)' }}>Target: {breakEvenUnits} units</span>
+                  </div>
+                  <div className="readiness" style={{ marginBottom: 16 }}>
+                    <div className="readiness-track" style={{ height: 12, borderRadius: 6 }}>
+                      <div className="readiness-fill" style={{ width: `${breakEvenProgress}%`, background: breakEvenProgress >= 100 ? 'var(--green)' : 'var(--c-analytics)', borderRadius: 6 }} />
+                    </div>
+                  </div>
+                  {breakEvenProgress >= 100 ? (
+                    <div style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}><i className="ph ph-check-circle" /> Product is officially profitable!</div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>You need to sell {Math.max(0, breakEvenUnits - totalSold)} more units to cover development costs.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="card-raised">
+                <div className="card-header"><span className="card-title">Revenue Contribution</span></div>
+                <div className="card-body">
+                  <div className="stat-card" style={{ padding: 0, border: 'none' }}>
+                    <div className="stat-label">Total Product Revenue</div>
+                    <div className="stat-value" style={{ fontSize: 36 }}>{currency(totalRev)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
         )}
       </div>
     </>

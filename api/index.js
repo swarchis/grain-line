@@ -4,9 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 
-// Explicit path, not the bare `dotenv.config()` default — that resolves
-// relative to process.cwd(), which depends on how/where this gets launched
-// from and silently loads nothing if cwd isn't api/ itself.
+// Explicit path, not the bare `dotenv.config()` default
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
@@ -29,7 +27,6 @@ async function callGemini(prompt, imageBase64 = null) {
   const payload = {
     contents: [{ parts }],
     generationConfig: { response_mime_type: "application/json" },
-    // Turn off all safety blocks so fashion sketches aren't flagged
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -120,10 +117,6 @@ Return a JSON object with this exact structure:
   }
 });
 
-// Generates a blank starting silhouette for a garment type that isn't in the
-// preset library (e.g. "balaclava"). Returns flat, stroke-only SVG path data
-// in the same viewBox/style as the hand-built presets in GarmentSilhouette.jsx
-// — this is a starting outline for the founder to sketch over, not finished art.
 app.post('/api/generate-silhouette', async (req, res) => {
   console.log("📥 Received silhouette generation request...");
   try {
@@ -168,10 +161,6 @@ Return ONLY a JSON object with exactly this structure:
 // 2. VENDOR SOURCING & OUTREACH ENDPOINTS
 // ---------------------------------------------------------
 
-// Parses whatever a founder pastes when importing a vendor (a marketplace link,
-// a forwarded email, raw notes) into a structured profile. This is the
-// human-in-the-loop alternative to scraping sites like Alibaba directly —
-// the founder always reviews/edits the result before it's saved.
 app.post('/api/parse-vendor', async (req, res) => {
   console.log("📥 Received vendor parse request...");
   try {
@@ -203,9 +192,6 @@ Return a JSON object with exactly this structure:
   }
 });
 
-// Drafts an email to a vendor using brand/product context. Returns text only —
-// the frontend opens it in the founder's own mail client (mailto:) rather than
-// sending anything itself, so there's no inbox/OAuth integration to build yet.
 app.post('/api/draft-vendor-email', async (req, res) => {
   console.log("📥 Received email draft request...");
   try {
@@ -240,12 +226,6 @@ Write a concise, professional email (under 200 words), with a placeholder for th
   }
 });
 
-// Real-time vendor search — no local database involved. Tavily runs an actual
-// web search (Gemini's own Search grounding needs a billing-enabled Google
-// Cloud project, confirmed via direct testing, so this stays a separate call),
-// then Gemini reads the real results and extracts candidate vendor profiles.
-// The founder reviews and explicitly saves whichever ones they want — nothing
-// here is written to their vendor list automatically.
 app.post('/api/search-vendors', async (req, res) => {
   console.log("📥 Received vendor search request...");
   try {
@@ -255,11 +235,6 @@ app.post('/api/search-vendors', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'TAVILY_API_KEY is not set in api/.env — get a free key at tavily.com' });
     }
 
-    // Two Tavily calls run in parallel: a tight query (as the founder typed it) and
-    // a loosened one (category/location only) so there's always a wider pool to draw
-    // "broader" candidates from, even when the specific query is too narrow to surface much.
-    // Both are phrased to bias toward manufacturers-for-hire, not retail clothing brands —
-    // "manufacturer" alone surfaces brands who just mention their own production.
     const broadQuery = query.split(/[,.]|(?:\bwith\b)|(?:\bthat\b)/)[0].trim();
     const MFG_BIAS = 'private label OR white label OR OEM ODM OR contract manufacturer OR wholesale factory -shop -"our collection"';
     const [tightRes, broadRes] = await Promise.all([
@@ -286,7 +261,6 @@ app.post('/api/search-vendors', async (req, res) => {
     ]);
     if (tightRes.error) throw new Error(tightRes.error);
 
-    // De-dupe by URL across both result sets.
     const seen = new Set();
     const results = [...(tightRes.results || []), ...(broadRes.results || [])].filter(r => {
       if (seen.has(r.url)) return false;
@@ -332,9 +306,6 @@ Do not invent details not supported by the text. Return a JSON object with exact
 
     const parsed = await callGemini(prompt);
 
-    // Quick live check for parked/expired/for-sale domains — catches the "clicked
-    // through to a domain-for-sale page" case. Doesn't punish timeouts or bot-blocked
-    // sites (inconclusive ≠ dead), only drops on an explicit for-sale signal.
     const PARKING_SIGNALS = ['buy this domain', 'domain is for sale', 'this domain may be for sale', 'domain for sale', 'sedo.com', 'hugedomains', 'afternic', 'dan.com', 'godaddy.com/domainsearch', 'the lease to own', 'inquire about this domain'];
     async function isLikelyAlive(url) {
       if (!url) return true;
@@ -343,11 +314,11 @@ Do not invent details not supported by the text. Return a JSON object with exact
         const timeout = setTimeout(() => controller.abort(), 5000);
         const r = await fetch(url, { signal: controller.signal, redirect: 'follow' });
         clearTimeout(timeout);
-        if (!r.ok) return true; // non-200 could just be bot-blocking — inconclusive, don't punish
+        if (!r.ok) return true; 
         const text = (await r.text()).toLowerCase().slice(0, 5000);
         return !PARKING_SIGNALS.some(s => text.includes(s));
       } catch {
-        return true; // network error/timeout — inconclusive, don't punish
+        return true; 
       }
     }
     async function filterAlive(list) {
@@ -368,11 +339,6 @@ Do not invent details not supported by the text. Return a JSON object with exact
   }
 });
 
-// Scores how well a vendor fits a specific product — category/specialty match,
-// rough MOQ-vs-budget unit economics, location/lead-time risk against the brand's
-// risk tolerance, and anything red-flaggy in the founder's own notes or quote
-// history. Same score+notes shape as design analysis, same disclaimer: this is a
-// starting-point estimate, not a verified judgment — the founder decides.
 app.post('/api/analyze-vendor-fit', async (req, res) => {
   console.log("📥 Received vendor fit request...");
   try {
@@ -441,11 +407,10 @@ Return a JSON object with exactly this structure:
 // ---------------------------------------------------------
 // 3. BILLING (Stripe)
 // ---------------------------------------------------------
-// Lazily constructed so a missing key fails individual requests with a clear
-// message instead of crashing the whole server on boot.
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 const PRICE_IDS = { basic: process.env.STRIPE_PRICE_BASIC, premium: process.env.STRIPE_PRICE_PREMIUM };
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+const API_URL = process.env.API_URL || 'http://localhost:3001';
 
 function requireStripe(res) {
   if (!stripe) {
@@ -455,8 +420,6 @@ function requireStripe(res) {
   return true;
 }
 
-// Creates a Stripe Checkout session for a plan upgrade. The frontend redirects
-// the browser to the returned URL; Stripe handles the actual payment form.
 app.post('/api/create-checkout-session', async (req, res) => {
   if (!requireStripe(res)) return;
   try {
@@ -481,9 +444,6 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// Called by the frontend on the success redirect — verifies the session with
-// Stripe directly (never trusts the URL alone) before the client writes the
-// new plan to Supabase under its own authenticated (RLS-respecting) session.
 app.post('/api/confirm-checkout', async (req, res) => {
   if (!requireStripe(res)) return;
   try {
@@ -507,8 +467,6 @@ app.post('/api/confirm-checkout', async (req, res) => {
   }
 });
 
-// Opens Stripe's hosted Customer Portal so a founder can update payment
-// details, change plans, or cancel — without building any of that UI ourselves.
 app.post('/api/create-portal-session', async (req, res) => {
   if (!requireStripe(res)) return;
   try {
@@ -526,12 +484,6 @@ app.post('/api/create-portal-session', async (req, res) => {
   }
 });
 
-// Reconciles a brand's plan against the real subscription status in Stripe.
-// There's no webhook wired up (that needs a Supabase service-role key, a
-// bigger step than billing itself), so this is what catches a cancellation
-// made through the Stripe portal — called whenever Settings loads for a
-// brand that has a subscription on file, same "ask Stripe directly, then
-// write under the user's own session" pattern as checkout confirmation.
 app.post('/api/subscription-status', async (req, res) => {
   if (!requireStripe(res)) return;
   try {
@@ -549,6 +501,71 @@ app.post('/api/subscription-status', async (req, res) => {
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 4. SHOPIFY INTEGRATION
+// ---------------------------------------------------------
+
+app.get('/api/shopify/auth', (req, res) => {
+  const { shop, brandId } = req.query;
+  if (!shop || !brandId) return res.status(400).send('Missing shop or brandId');
+
+  // Need a Shopify Partner Account to get these keys, otherwise it fails.
+  if (!process.env.SHOPIFY_CLIENT_ID) {
+    return res.status(400).send('SHOPIFY_CLIENT_ID is missing from api/.env. You must create a Shopify Partner App first.');
+  }
+
+  const scopes = 'read_orders,read_products';
+  const redirectUri = `${API_URL}/api/shopify/callback`;
+  const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_CLIENT_ID}&scope=${scopes}&redirect_uri=${redirectUri}&state=${brandId}`;
+  
+  res.redirect(installUrl);
+});
+
+app.get('/api/shopify/callback', async (req, res) => {
+  const { shop, code, state: brandId } = req.query;
+  if (!shop || !code || !brandId) return res.status(400).send('Missing parameters');
+
+  try {
+    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_CLIENT_ID,
+        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+        code
+      })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error_description || 'Failed to get token');
+
+    // Redirect back to frontend. The frontend reads these params and safely writes to Supabase
+    res.redirect(`${APP_URL}/sales?shopify_success=true&shop=${shop}&token=${data.access_token}&brandId=${brandId}`);
+  } catch (err) {
+    console.error('Shopify OAuth Error:', err);
+    res.redirect(`${APP_URL}/sales?shopify_error=true`);
+  }
+});
+
+// Shopify blocks CORS from browsers, so the frontend asks the backend to fetch the orders.
+app.post('/api/shopify/fetch-orders', async (req, res) => {
+  const { shop, token } = req.body;
+  if (!shop || !token) return res.status(400).json({ ok: false, error: 'Missing shop or token' });
+
+  try {
+    // Fetch last 60 days of orders
+    const response = await fetch(`https://${shop}/admin/api/2024-01/orders.json?status=any&limit=250`, {
+      headers: { 'X-Shopify-Access-Token': token }
+    });
+    const data = await response.json();
+    
+    if (!response.ok) throw new Error(data.errors || 'Failed to fetch orders');
+    res.json({ ok: true, orders: data.orders });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

@@ -12,6 +12,7 @@ import { TeamProvider } from './context/TeamContext.jsx';
 import { AIUsageProvider } from './context/AIUsageContext.jsx';
 import { OnboardingProvider } from './context/OnboardingContext.jsx';
 import { AppUIProvider, useAppUI } from './context/AppUIContext.jsx';
+import { SalesProvider } from './context/SalesContext.jsx';
 import OnboardingOverlay from './components/OnboardingOverlay.jsx';
 import ShortcutsHelpModal from './components/ShortcutsHelpModal.jsx';
 import { useKeyboardShortcuts } from './lib/useKeyboardShortcuts.js';
@@ -108,6 +109,7 @@ export default function App() {
             <MaterialsProvider>
             <TeamProvider>
             <AIUsageProvider>
+            <SalesProvider>
               <BrowserRouter>
                 <Routes>
                   <Route path="/welcome" element={<Welcome />} />
@@ -121,6 +123,7 @@ export default function App() {
                   } />
                 </Routes>
               </BrowserRouter>
+            </SalesProvider>
             </AIUsageProvider>
             </TeamProvider>
             </MaterialsProvider>

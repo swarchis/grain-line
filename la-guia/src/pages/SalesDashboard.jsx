@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { salesData } from '../data/mockData.js';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { currency } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { useSales } from '../context/SalesContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import RevenueChart from '../components/RevenueChart.jsx';
@@ -14,12 +15,124 @@ const TABS = [
 
 export default function SalesDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState('overview');
-  const { products, loading } = useProducts();
+  const { products, activeBrand, loading: productsLoading } = useProducts();
+  const { connection, monthlySales, loading: salesLoading, disconnectStore, refresh: refreshSales } = useSales();
+  const [shopDomain, setShopDomain] = useState('');
+  
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
 
-  const lastMonth = salesData.monthly[salesData.monthly.length - 1];
-  const prevMonth = salesData.monthly[salesData.monthly.length - 2];
-  const monthDelta = prevMonth ? ((lastMonth.revenue - prevMonth.revenue) / (prevMonth.revenue || 1)) * 100 : null;
+  // 1. Catch OAuth Returns
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const success = params.get('shopify_success');
+    const error = params.get('shopify_error');
+    
+    if (success === 'true' && activeBrand) {
+      const shop = params.get('shop');
+      const token = params.get('token');
+      const brandId = params.get('brandId');
+
+      if (brandId === activeBrand.id) {
+        supabase.from('store_connections').upsert({
+          brand_id: activeBrand.id,
+          platform: 'shopify',
+          shop_domain: shop,
+          access_token: token,
+        }, { onConflict: 'brand_id, platform' }).then(() => {
+          refreshSales();
+          window.history.replaceState({}, '', '/sales');
+          setTab('connections');
+        });
+      }
+    } else if (error === 'true') {
+      alert("Failed to connect Shopify store.");
+      window.history.replaceState({}, '', '/sales');
+    }
+  }, [location.search, activeBrand]);
+
+  const totalRevenue = monthlySales.reduce((sum, m) => sum + m.revenue, 0);
+  const totalOrders = monthlySales.reduce((sum, m) => sum + m.orders_count, 0);
+  const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+  const lastMonth = monthlySales[monthlySales.length - 1];
+  const prevMonth = monthlySales[monthlySales.length - 2];
+  const monthDelta = (lastMonth && prevMonth && prevMonth.revenue > 0)
+    ? ((lastMonth.revenue - prevMonth.revenue) / prevMonth.revenue) * 100
+    : null;
+
+  const chartData = monthlySales.map(m => {
+    const d = new Date(m.month + '-01T00:00:00');
+    return {
+      month: d.toLocaleDateString(undefined, { month: 'short' }),
+      revenue: m.revenue
+    };
+  });
+
+  const handleConnect = (e) => {
+    e.preventDefault();
+    const domain = shopDomain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!domain) return;
+    if (!domain.includes('.myshopify.com')) {
+      alert('Please enter your full .myshopify.com domain.');
+      return;
+    }
+    window.location.href = `http://localhost:3001/api/shopify/auth?shop=${domain}&brandId=${activeBrand?.id}`;
+  };
+
+  // 2. Fetch from Shopify via Backend Proxy and Save to Supabase
+  const syncSales = async () => {
+    if (!connection) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch('http://localhost:3001/api/shopify/fetch-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop: connection.shop_domain, token: connection.access_token })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+
+      // Aggregate raw Shopify orders by Month (YYYY-MM)
+      const aggregates = {};
+      data.orders.forEach(order => {
+        const month = order.created_at.substring(0, 7); // "2024-10"
+        if (!aggregates[month]) aggregates[month] = { revenue: 0, count: 0 };
+        aggregates[month].revenue += parseFloat(order.total_price);
+        aggregates[month].count += 1;
+      });
+
+      // Format for Supabase Insertion (Null product = brand-wide aggregate)
+      const toInsert = Object.keys(aggregates).map(month => ({
+        brand_id: activeBrand.id,
+        product_id: null, 
+        month: month,
+        revenue: aggregates[month].revenue,
+        orders_count: aggregates[month].count
+      }));
+
+      // In a full implementation, you would also loop through order.line_items,
+      // match them to `products` in Supabase by SKU, and insert specific rows 
+      // for product_id to populate the ProductInsights page correctly!
+
+      for (const row of toInsert) {
+        await supabase.from('sales_data').upsert(row, { onConflict: 'brand_id, product_id, month' });
+      }
+
+      await refreshSales();
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (salesLoading || productsLoading) {
+    return <div className="content" style={{ textAlign: 'center', padding: 40 }}><i className="ph ph-circle-notch ph-spin" /></div>;
+  }
 
   return (
     <>
@@ -29,54 +142,82 @@ export default function SalesDashboard() {
             <div className="page-eyebrow" style={{ color: 'var(--c-analytics)' }}>Analytics & Sales</div>
             <h1 className="page-title">Sales Dashboard</h1>
           </div>
-          <div className="page-sub">{salesData.connectedStore}</div>
+          <div className="page-sub">{connection ? connection.shop_domain : 'No store connected'}</div>
+        </div>
+        <div className="topbar-right">
+          {connection && (
+            <button className="btn btn-primary" onClick={syncSales} disabled={syncing}>
+              {syncing ? <><i className="ph ph-spinner ph-spin"/> Syncing...</> : <><i className="ph ph-arrows-clockwise"/> Sync Sales</>}
+            </button>
+          )}
         </div>
       </div>
 
       <TabBar tabs={TABS} active={tab} onChange={setTab} accent="var(--c-analytics)" />
 
       <div className="content">
+        {syncError && (
+          <div className="alert" style={{ padding: '11px 13px', borderRadius: 8, background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid var(--red-border)', marginBottom: 16 }}>
+            <strong>Sync Error:</strong> {syncError}
+          </div>
+        )}
+
         {tab === 'overview' && (
           <>
-            <div className="stats-row">
-              <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
-                <div className="stat-label">Total revenue</div>
-                <div className="stat-value">{currency(salesData.totalRevenue)}</div>
-              </div>
-              <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
-                <div className="stat-label">Total orders</div>
-                <div className="stat-value">{salesData.totalOrders}</div>
-              </div>
-              <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
-                <div className="stat-label">Active Designs</div>
-                <div className="stat-value">{products.length}</div>
-              </div>
-              <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
-                <div className="stat-label">Avg. order value</div>
-                <div className="stat-value">{currency(Math.round(salesData.totalRevenue / salesData.totalOrders))}</div>
-              </div>
-            </div>
+            {!connection ? (
+              <EmptyState 
+                icon="ph-plug" 
+                color="var(--c-analytics)" 
+                title="Shopify Not Connected" 
+                sub="Connect your store in the Connections tab to unlock live sales data and profitability tracking." 
+                cta="Go to Connections" 
+                onCta={() => setTab('connections')} 
+              />
+            ) : (
+              <>
+                <div className="stats-row">
+                  <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
+                    <div className="stat-label">Total revenue</div>
+                    <div className="stat-value">{currency(totalRevenue)}</div>
+                  </div>
+                  <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
+                    <div className="stat-label">Total orders</div>
+                    <div className="stat-value">{totalOrders}</div>
+                  </div>
+                  <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
+                    <div className="stat-label">Active Designs</div>
+                    <div className="stat-value">{products.length}</div>
+                  </div>
+                  <div className="stat-card" style={{ '--stat-accent': 'var(--c-analytics)' }}>
+                    <div className="stat-label">Avg. order value</div>
+                    <div className="stat-value">{currency(avgOrderValue)}</div>
+                  </div>
+                </div>
 
-            <div className="card-raised" data-tour="sales-dashboard" style={{ marginBottom: 24 }}>
-              <div className="card-header">
-                <span className="card-title">Revenue by month</span>
-                {monthDelta !== null && (
-                  <span style={{ fontSize: 12, color: monthDelta >= 0 ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <i className={`ph ${monthDelta >= 0 ? 'ph-arrow-up-right' : 'ph-arrow-down-right'}`} />
-                    {Math.abs(monthDelta).toFixed(0)}% vs {prevMonth.month}
-                  </span>
-                )}
-              </div>
-              <div className="card-body">
-                <RevenueChart data={salesData.monthly} accent="var(--c-analytics)" />
-              </div>
-            </div>
+                <div className="card-raised" data-tour="sales-dashboard" style={{ marginBottom: 24 }}>
+                  <div className="card-header">
+                    <span className="card-title">Revenue by month</span>
+                    {monthDelta !== null && (
+                      <span style={{ fontSize: 12, color: monthDelta >= 0 ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <i className={`ph ${monthDelta >= 0 ? 'ph-arrow-up-right' : 'ph-arrow-down-right'}`} />
+                        {Math.abs(monthDelta).toFixed(0)}% vs {new Date(prevMonth.month + '-01T00:00:00').toLocaleDateString(undefined, { month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                  <div className="card-body">
+                    {chartData.length >= 2 ? (
+                      <RevenueChart data={chartData} accent="var(--c-analytics)" />
+                    ) : (
+                      <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-3)' }}>Sync recent sales or wait for more historical data to chart.</div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
 
-            <div className="section-label">Your Products (Financial Modeling)</div>
+            <div className="section-label" style={{ marginTop: 24 }}>Your Products (Financial Modeling)</div>
             <div className="card">
-              {loading ? (
-                <div style={{ padding: 20, textAlign: 'center' }}><i className="ph ph-spinner ph-spin" /> Loading products...</div>
-              ) : products.length === 0 ? (
+              {products.length === 0 ? (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink-3)' }}>No products created yet.</div>
               ) : (
                 products.map(p => (
@@ -111,16 +252,34 @@ export default function SalesDashboard() {
 
         {tab === 'connections' && (
           <>
-            <div className="card-raised" style={{ marginBottom: 20 }}>
-              <div className="card-header">
-                <span className="card-title">Shopify</span>
-                <span className="tag tag-green">Connected</span>
+            {connection ? (
+              <div className="card-raised" style={{ marginBottom: 20 }}>
+                <div className="card-header">
+                  <span className="card-title">Shopify</span>
+                  <span className="tag tag-green">Connected</span>
+                </div>
+                <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>{connection.shop_domain}</div>
+                  <button className="btn btn-sm" onClick={disconnectStore}>Disconnect</button>
+                </div>
               </div>
-              <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>{salesData.connectedStore}</div>
-                <button className="btn btn-sm">Manage</button>
-              </div>
-            </div>
+            ) : (
+              <form className="card-raised" style={{ marginBottom: 20 }} onSubmit={handleConnect}>
+                <div className="card-header">
+                  <span className="card-title">Connect Shopify</span>
+                </div>
+                <div className="card-body">
+                   <div className="form-group" style={{ marginBottom: 0 }}>
+                     <label className="form-label">Store Domain</label>
+                     <div style={{ display: 'flex', gap: 10 }}>
+                       <input className="form-input" placeholder="e.g. my-brand.myshopify.com" value={shopDomain} onChange={e => setShopDomain(e.target.value)} required />
+                       <button type="submit" className="btn btn-primary" disabled={!shopDomain.trim()}>Connect Store</button>
+                     </div>
+                     <div className="form-hint" style={{ marginTop: 8 }}>You will be redirected to Shopify to authorize Grainline. NOTE: You must add your Shopify API Keys to your `api/.env` file first.</div>
+                   </div>
+                </div>
+              </form>
+            )}
             <EmptyState icon="ph-plug" color="var(--c-analytics)" title="No other integrations yet" sub="TikTok Shop and other storefronts will connect here once available." />
           </>
         )}
