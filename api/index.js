@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const { Resend } = require('resend');
 
 // Explicit path, not the bare `dotenv.config()` default
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -10,6 +11,8 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const MODEL_NAME = "gemini-flash-lite-latest";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
@@ -512,9 +515,8 @@ app.get('/api/shopify/auth', (req, res) => {
   const { shop, brandId } = req.query;
   if (!shop || !brandId) return res.status(400).send('Missing shop or brandId');
 
-  // Need a Shopify Partner Account to get these keys, otherwise it fails.
   if (!process.env.SHOPIFY_CLIENT_ID) {
-    return res.status(400).send('SHOPIFY_CLIENT_ID is missing from api/.env. You must create a Shopify Partner App first.');
+    return res.status(400).send('SHOPIFY_CLIENT_ID is missing from api/.env.');
   }
 
   const scopes = 'read_orders,read_products';
@@ -542,7 +544,6 @@ app.get('/api/shopify/callback', async (req, res) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error_description || 'Failed to get token');
 
-    // Redirect back to frontend. The frontend reads these params and safely writes to Supabase
     res.redirect(`${APP_URL}/sales?shopify_success=true&shop=${shop}&token=${data.access_token}&brandId=${brandId}`);
   } catch (err) {
     console.error('Shopify OAuth Error:', err);
@@ -550,13 +551,11 @@ app.get('/api/shopify/callback', async (req, res) => {
   }
 });
 
-// Shopify blocks CORS from browsers, so the frontend asks the backend to fetch the orders.
 app.post('/api/shopify/fetch-orders', async (req, res) => {
   const { shop, token } = req.body;
   if (!shop || !token) return res.status(400).json({ ok: false, error: 'Missing shop or token' });
 
   try {
-    // Fetch last 60 days of orders
     const response = await fetch(`https://${shop}/admin/api/2024-01/orders.json?status=any&limit=250`, {
       headers: { 'X-Shopify-Access-Token': token }
     });
@@ -566,6 +565,46 @@ app.post('/api/shopify/fetch-orders', async (req, res) => {
     res.json({ ok: true, orders: data.orders });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 5. EMAIL INTEGRATION (Resend)
+// ---------------------------------------------------------
+
+app.post('/api/send-invite', async (req, res) => {
+  console.log("📥 Received invite email request...");
+  if (!resend) {
+    console.warn("⚠️ RESEND_API_KEY missing. Skipping email send.");
+    return res.json({ ok: true, message: 'Skipped email because no key was found.' });
+  }
+
+  try {
+    const { email, brandName, inviterName, role } = req.body;
+    const inviteLink = `${APP_URL}/signup?email=${encodeURIComponent(email)}`;
+
+    const htmlBody = `
+      <div style="font-family: sans-serif; padding: 20px; color: #222;">
+        <h2>You've been invited to Grainline!</h2>
+        <p><strong>${inviterName || 'A teammate'}</strong> has invited you to join the <strong>${brandName}</strong> workspace as an ${role}.</p>
+        <p>Grainline is a production operating system for fashion brands.</p>
+        <a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background: #211D18; color: #fff; text-decoration: none; border-radius: 8px; margin-top: 10px;">
+          Join Workspace
+        </a>
+      </div>
+    `;
+
+    const data = await resend.emails.send({
+      from: 'Grainline <onboarding@resend.dev>',
+      to: email, 
+      subject: `Join ${brandName} on Grainline`,
+      html: htmlBody,
+    });
+
+    res.json({ ok: true, data });
+  } catch (error) {
+    console.error('❌ Email Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
 

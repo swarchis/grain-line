@@ -2,12 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useProducts } from './ProductsContext.jsx';
 import { useAuth } from './AuthContext.jsx';
+import { useUserPreferences } from './UserPreferencesContext.jsx';
 
 const TeamContext = createContext(null);
 
 export function TeamProvider({ children }) {
   const { activeBrand } = useProducts();
   const { user } = useAuth();
+  const { preferences } = useUserPreferences();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,9 +33,6 @@ export function TeamProvider({ children }) {
 
   useEffect(() => { loadMembers(); }, [activeBrand?.id]);
 
-  // Whenever the signed-in user changes, check for pending invites matching
-  // their email and claim them — this is the whole "accept an invite" flow,
-  // no transactional email required.
   useEffect(() => {
     if (!user?.email) return;
     async function claimInvites() {
@@ -55,13 +54,34 @@ export function TeamProvider({ children }) {
 
   const inviteMember = async (email, role) => {
     if (!activeBrand) throw new Error('No active brand');
+    const targetEmail = email.trim().toLowerCase();
+
+    // 1. Save Invite to Database
     const { data, error } = await supabase
       .from('brand_members')
-      .insert([{ brand_id: activeBrand.id, invited_email: email.trim().toLowerCase(), role }])
+      .insert([{ brand_id: activeBrand.id, invited_email: targetEmail, role }])
       .select()
       .single();
     if (error) throw error;
+    
     setMembers(prev => [...prev, data]);
+
+    // 2. Dispatch the Email via our Backend
+    try {
+      await fetch('http://localhost:3001/api/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          brandName: activeBrand.name,
+          inviterName: preferences?.full_name || user?.email,
+          role: role
+        })
+      });
+    } catch (err) {
+      console.error("Failed to send invite email", err);
+    }
+
     return data;
   };
 
