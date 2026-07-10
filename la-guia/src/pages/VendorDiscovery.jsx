@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVendors } from '../context/VendorsContext.jsx';
+import { useProducts } from '../context/ProductsContext.jsx';
 import { trustTagClass } from '../lib/format.js';
 import TabBar from '../components/TabBar.jsx';
+import { getPlan } from '../data/plans.js';
 
 export const TRUST_LABELS = [
   { label: 'Imported by user', tone: 'neutral' },
@@ -97,6 +99,9 @@ function SearchResultCard({ result, onAdd, adding, added }) {
 export default function VendorDiscovery() {
   const navigate = useNavigate();
   const { vendors, loading, addVendor, toggleFavorite } = useVendors();
+  const { activeBrand } = useProducts();
+  const plan = getPlan(activeBrand?.plan_tier || 'free');
+  const searchLocked = plan.id === 'free';
   const [tab, setTab] = useState('discover');
   const [mode, setMode] = useState('import');
   const [saving, setSaving] = useState(false);
@@ -173,6 +178,7 @@ export default function VendorDiscovery() {
   const handleSearch = async e => {
     e.preventDefault();
     if (!query.trim()) return;
+    if (searchLocked) { setSearchError('Vendor search needs the Basic plan or higher — upgrade in Settings > Billing.'); return; }
     setSearching(true);
     setSearchError(null);
     setResults(null);
@@ -225,15 +231,23 @@ export default function VendorDiscovery() {
         </div>
       </div>
 
-      <TabBar tabs={TABS} active={tab} onChange={setTab} accent="var(--c-vendors)" />
+      <TabBar tabs={TABS} active={tab} onChange={setTab} accent="var(--c-vendors)" dataTour="vendor-tabs" />
 
       <div className="content">
         {tab === 'discover' && (
           <>
             <div className="pill-group" style={{ marginBottom: 20 }}>
               <button className={`pill ${mode === 'import' ? 'active' : ''}`} onClick={() => setMode('import')}>Import</button>
-              <button className={`pill ${mode === 'search' ? 'active' : ''}`} onClick={() => setMode('search')}>Search</button>
+              <button className={`pill ${mode === 'search' ? 'active' : ''}`} onClick={() => setMode('search')}>
+                Search {searchLocked && <i className="ph ph-lock-simple" style={{ marginLeft: 4 }} />}
+              </button>
             </div>
+            {mode === 'search' && searchLocked && (
+              <div className="form-hint" style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', color: 'var(--amber)' }}>
+                <i className="ph ph-warning" style={{ marginRight: 4 }} /> Vendor search needs the Basic plan or higher.{' '}
+                <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => navigate('/settings')}>Upgrade</span> to search the web for manufacturers.
+              </div>
+            )}
 
             {mode === 'import' ? (
               <>
@@ -322,13 +336,14 @@ export default function VendorDiscovery() {
                         className="form-input"
                         placeholder="e.g. Sustainable organic cotton hoodie manufacturers in Portugal, MOQ under 300, target $18/unit"
                         value={query} onChange={e => setQuery(e.target.value)}
+                        disabled={searchLocked}
                       />
                       <div className="form-hint">
                         The more specific you are, the better the match — try to include <strong>material</strong>, <strong>quantity/MOQ</strong>, <strong>target price</strong>, and <strong>location</strong>. A vague search gets vague results.
                         Runs a real web search, then AI extracts candidate vendors from actual results — nothing here is pre-loaded or made up.
                       </div>
                     </div>
-                    <button className="btn btn-primary" type="submit" disabled={searching || !query.trim()}>
+                    <button className="btn btn-primary" type="submit" disabled={searching || !query.trim() || searchLocked}>
                       <i className="ph ph-magnifying-glass" /> {searching ? 'Searching…' : 'Search the web'}
                     </button>
                   </div>

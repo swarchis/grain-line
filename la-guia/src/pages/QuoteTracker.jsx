@@ -67,7 +67,7 @@ export default function QuoteTracker() {
       </div>
 
       <div className="content">
-        <div className="pill-group" style={{ marginBottom: 22 }}>
+        <div className="pill-group" data-tour="quote-tracker" style={{ marginBottom: 22 }}>
           {STATUSES.map(s => (
             <button key={s} className={`pill ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>{s}</button>
           ))}

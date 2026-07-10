@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { brands } from '../data/mockData.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useNotifications } from '../context/NotificationsContext.jsx';
+import { useUserPreferences } from '../context/UserPreferencesContext.jsx';
+import { useOnboarding } from '../context/OnboardingContext.jsx';
+import { useAppUI } from '../context/AppUIContext.jsx';
+import { useTheme } from '../lib/useTheme.js';
 import { WaxSeal } from './decor.jsx';
+import SidebarSearch from './SidebarSearch.jsx';
 
 const NAV_GROUPS = [
-  { label: 'Navigation', items: [
+  { label: 'Navigation', tourId: 'nav-navigation', items: [
     { path: '/', icon: 'ph-house', label: 'Home', color: 'var(--c-home)' },
     { path: '/collections', icon: 'ph-stack', label: 'Collections', color: 'var(--c-organization)' },
     { path: '/design', icon: 'ph-pencil-simple', label: 'Designs', color: 'var(--c-design)' },
@@ -16,7 +20,7 @@ const NAV_GROUPS = [
     { path: '/vendors', icon: 'ph-handshake', label: 'Vendors', color: 'var(--c-vendors)' },
     { path: '/quotes', icon: 'ph-file-text', label: 'Quotes & Pricing', color: 'var(--c-vendors)' },
   ] },
-  { label: 'Production', items: [
+  { label: 'Production', tourId: 'nav-production', items: [
     { path: '/production', icon: 'ph-package', label: 'Production Orders', color: 'var(--c-materials)' },
     { path: '/readiness', icon: 'ph-check-circle', label: 'Readiness Review', color: 'var(--c-finalcheck)' },
   ] },
@@ -28,15 +32,6 @@ const NAV_GROUPS = [
     { path: '/notifications', icon: 'ph-bell', label: 'Notifications', color: 'var(--c-settings)' },
   ] },
 ];
-
-function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('grainline_theme') || 'light');
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('grainline_theme', theme);
-  }, [theme]);
-  return { isDark: theme === 'dark', toggle: () => setTheme(t => (t === 'dark' ? 'light' : 'dark')) };
-}
 
 function GrainlineMark({ size = 22 }) {
   return (
@@ -50,19 +45,24 @@ export default function Sidebar() {
   const { isDark, toggle } = useTheme();
   const navigate = useNavigate();
   const [brandOpen, setBrandOpen] = useState(false);
+  const [addingBrand, setAddingBrand] = useState(false);
+  const [newBrandName, setNewBrandName] = useState('');
   const { user, logOut } = useAuth();
-  const { activeBrand } = useProducts();
+  const { activeBrand, brands, switchBrand, createBrand } = useProducts();
   const { notifications } = useNotifications();
-  
+  const { preferences } = useUserPreferences();
+  const { start: startTour } = useOnboarding();
+  const { openHelp } = useAppUI();
+
   const [collapsed, setCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('grainline_nav_collapsed')) || []; } catch { return []; }
   });
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const displayName = user?.email
+  const displayName = preferences.full_name || (user?.email
     ? user.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    : 'Founder';
+    : 'Founder');
   const initials = displayName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'F';
 
   const toggleGroup = label => setCollapsed(prev => {
@@ -71,7 +71,19 @@ export default function Sidebar() {
     return next;
   });
 
-  if (!activeBrand) return null;
+  const handleCreateBrand = async (e) => {
+    e.preventDefault();
+    const name = newBrandName.trim();
+    if (!name) return;
+    try {
+      await createBrand(name);
+      setNewBrandName('');
+      setAddingBrand(false);
+      setBrandOpen(false);
+    } catch (err) {
+      alert('Could not create brand: ' + err.message);
+    }
+  };
 
   return (
     <nav
@@ -97,30 +109,36 @@ export default function Sidebar() {
             Production OS
           </div>
         </div>
-        <button className="bell-btn" onClick={() => navigate('/notifications')} title="Notifications">
+        <button className="bell-btn" data-tour="sidebar-bell" onClick={() => navigate('/notifications')} title="Notifications">
           <i className="ph ph-bell" style={{ fontSize: 14 }} />
           {unreadCount > 0 && <span className="bell-dot" />}
         </button>
       </div>
 
-      <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--sb-border)', position: 'relative' }}>
+      <div data-tour="brand-switcher" style={{ padding: '15px 18px', borderBottom: '1px solid var(--sb-border)', position: 'relative' }}>
         <div
           onClick={() => setBrandOpen(o => !o)}
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <WaxSeal initials={activeBrand.name.split(' ').map(w => w[0]).slice(0, 2).join('')} size={30} />
-            <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <WaxSeal initials={activeBrand ? activeBrand.name.split(' ').map(w => w[0]).slice(0, 2).join('') : '—'} size={30} />
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 9, color: 'var(--sb-ink-3)', fontFamily: 'var(--sans)', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, marginBottom: 3 }}>
-                Brand
+                Brand {brands.length > 1 ? `(${brands.length})` : ''}
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sb-ink)' }}>{activeBrand.name}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--sb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {activeBrand ? activeBrand.name : 'No brand loaded'}
+              </div>
             </div>
           </div>
-          <i className="ph ph-caret-up-down" style={{ fontSize: 13, color: 'var(--sb-ink-3)' }} />
+          <i className="ph ph-caret-up-down" style={{ fontSize: 13, color: 'var(--sb-ink-3)', flexShrink: 0 }} />
         </div>
         <div style={{ marginTop: 10 }}>
-          <span className="tag" style={{ background: 'var(--sb-hover)', borderColor: 'var(--sb-border)', color: 'var(--sb-accent)' }}>{activeBrand.global_risk || 'Balanced'} · default risk</span>
+          {activeBrand ? (
+            <span className="tag" style={{ background: 'var(--sb-hover)', borderColor: 'var(--sb-border)', color: 'var(--sb-accent)' }}>{activeBrand.global_risk || 'Balanced'} · default risk</span>
+          ) : (
+            <span style={{ fontSize: 11, color: 'var(--sb-ink-3)' }}>Check your Supabase migrations — see README.</span>
+          )}
         </div>
 
         {brandOpen && (
@@ -129,24 +147,39 @@ export default function Sidebar() {
               <div
                 key={b.id}
                 className="brand-switch-item"
-                onClick={() => { setBrandOpen(false); }}
+                onClick={() => { switchBrand(b.id); setBrandOpen(false); }}
               >
-                <span style={{ fontWeight: b.id === activeBrand.id ? 600 : 400 }}>{b.name}</span>
-                {b.id === activeBrand.id && <i className="ph ph-check" style={{ color: 'var(--accent)' }} />}
+                <span style={{ fontWeight: b.id === activeBrand?.id ? 600 : 400 }}>{b.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {b.memberRole && b.memberRole !== 'owner' && <span style={{ fontSize: 10, color: 'var(--ink-4)', textTransform: 'capitalize' }}>{b.memberRole}</span>}
+                  {b.id === activeBrand?.id && <i className="ph ph-check" style={{ color: 'var(--accent)' }} />}
+                </div>
               </div>
             ))}
-            <div className="brand-switch-item" style={{ color: 'var(--sb-ink-3)', borderTop: '1px solid var(--sb-border)' }}>
-              <i className="ph ph-plus" style={{ marginRight: 8 }} /> Add a brand
-            </div>
+            {addingBrand ? (
+              <form onSubmit={handleCreateBrand} style={{ padding: '10px 14px', borderTop: '1px solid var(--sb-border)', display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+                <input
+                  autoFocus className="form-input" style={{ padding: '6px 9px', fontSize: 12.5 }}
+                  placeholder="Brand name" value={newBrandName} onChange={e => setNewBrandName(e.target.value)}
+                />
+                <button type="submit" className="btn btn-sm btn-primary" style={{ padding: '6px 10px' }}><i className="ph ph-check" /></button>
+              </form>
+            ) : (
+              <div className="brand-switch-item" style={{ color: 'var(--sb-ink-3)', borderTop: '1px solid var(--sb-border)' }} onClick={(e) => { e.stopPropagation(); setAddingBrand(true); }}>
+                <i className="ph ph-plus" style={{ marginRight: 8 }} /> Add a brand
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      <SidebarSearch />
 
       <div style={{ flex: 1, padding: '4px 0 8px' }}>
         {NAV_GROUPS.map(group => {
           const isCollapsed = collapsed.includes(group.label);
           return (
-            <div key={group.label}>
+            <div key={group.label} data-tour={group.tourId}>
               <div className="nav-group-label" onClick={() => toggleGroup(group.label)}>
                 <span className={`nav-caret ${isCollapsed ? 'collapsed' : ''}`}>▾</span>
                 <span style={{ flex: 1 }}>{group.label}</span>
@@ -178,11 +211,19 @@ export default function Sidebar() {
           color: isActive ? 'var(--sb-ink)' : 'var(--sb-ink-2)',
           background: isActive ? 'var(--sb-hover)' : 'transparent',
           border: '1px solid transparent',
-          margin: '1px 0 8px',
+          margin: '1px 0 2px',
         })}>
           <i className="ph ph-gear-six nav-item-icon" style={{ color: 'var(--sb-ink-3)' }} />
           <span>Profile & Settings</span>
         </NavLink>
+        <div className="nav-item" onClick={startTour} style={{ color: 'var(--sb-ink-2)', cursor: 'pointer', margin: '1px 0' }}>
+          <i className="ph ph-compass nav-item-icon" style={{ color: 'var(--sb-ink-3)' }} />
+          <span>Take a tour</span>
+        </div>
+        <div className="nav-item" data-tour="keyboard-shortcuts-btn" onClick={openHelp} style={{ color: 'var(--sb-ink-2)', cursor: 'pointer', margin: '1px 0 8px' }}>
+          <i className="ph ph-keyboard nav-item-icon" style={{ color: 'var(--sb-ink-3)' }} />
+          <span>Keyboard shortcuts</span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 6px' }}>
           <div style={{
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
@@ -194,7 +235,7 @@ export default function Sidebar() {
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--sb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
-            <div style={{ fontSize: 10.5, color: 'var(--sb-ink-3)' }}>Founder</div>
+            <div style={{ fontSize: 10.5, color: 'var(--sb-ink-3)', textTransform: 'capitalize' }}>{activeBrand?.memberRole || 'Owner'}</div>
           </div>
           <button onClick={toggle} title={isDark ? 'Switch to light' : 'Switch to dark'} style={{
             width: 26, height: 26, borderRadius: '50%', flexShrink: 0,

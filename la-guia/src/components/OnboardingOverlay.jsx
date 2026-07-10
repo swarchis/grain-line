@@ -1,0 +1,125 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
+import { useOnboarding } from '../context/OnboardingContext.jsx';
+
+const CARD_W = 320;
+const GAP = 14;
+
+function findTarget(step) {
+  if (!step?.selector) return null;
+  return document.querySelector(step.selector);
+}
+
+export default function OnboardingOverlay() {
+  const { active, step, stepIndex, total, next, back, skipTour } = useOnboarding();
+  const location = useLocation();
+  const [rect, setRect] = useState(null);
+  const [cardPos, setCardPos] = useState(null);
+  const pollRef = useRef(null);
+
+  // Text updates the instant the step changes — only the highlight box and
+  // card position animate toward the new target, so there's never a blank
+  // gap between steps, just the card visibly sliding to where it's going.
+  useEffect(() => {
+    if (!active || !step) return;
+    clearTimeout(pollRef.current);
+    if (step.path && location.pathname !== step.path) return;
+
+    let attempts = 0;
+    const tryFind = () => {
+      const el = findTarget(step);
+      if (el) { setRect(el.getBoundingClientRect()); return; }
+      if (!step.selector) { setRect(null); return; }
+      attempts += 1;
+      if (attempts < 30) pollRef.current = setTimeout(tryFind, 40);
+      else setRect(null); // give up gracefully — falls back to a centered card
+    };
+    tryFind();
+    return () => clearTimeout(pollRef.current);
+  }, [active, step, location.pathname]);
+
+  useEffect(() => {
+    if (!rect) return;
+    const el = step?.selector && findTarget(step);
+    if (!el) return;
+    const onReposition = () => setRect(el.getBoundingClientRect());
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [rect, step]);
+
+  // Compute where the card should sit for the current rect (or centered if none).
+  useEffect(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (!rect) {
+      setCardPos({ top: vh / 2 - 100, left: vw / 2 - CARD_W / 2 });
+      return;
+    }
+    const below = rect.bottom + GAP;
+    const fitsBelow = below + 200 < vh;
+    const top = fitsBelow ? below : Math.max(GAP, rect.top - GAP - 200);
+    const left = Math.min(Math.max(rect.left, GAP), vw - CARD_W - GAP);
+    setCardPos({ top, left });
+  }, [rect]);
+
+  if (!active || !step || !cardPos) return null;
+
+  const hasSpotlight = !!rect;
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2000 }}>
+      {hasSpotlight ? (
+        <>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: rect.top - 4, background: 'rgba(20,17,12,0.55)', transition: 'height 0.25s ease' }} />
+          <div style={{ position: 'fixed', top: rect.bottom + 4, left: 0, right: 0, bottom: 0, background: 'rgba(20,17,12,0.55)', transition: 'top 0.25s ease' }} />
+          <div style={{ position: 'fixed', top: rect.top - 4, left: 0, width: rect.left - 4, height: rect.height + 8, background: 'rgba(20,17,12,0.55)', transition: 'all 0.25s ease' }} />
+          <div style={{ position: 'fixed', top: rect.top - 4, left: rect.right + 4, right: 0, height: rect.height + 8, background: 'rgba(20,17,12,0.55)', transition: 'all 0.25s ease' }} />
+          <div style={{
+            position: 'fixed', top: rect.top - 4, left: rect.left - 4, width: rect.width + 8, height: rect.height + 8,
+            border: '2px solid var(--accent)', borderRadius: 10, boxShadow: '0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent)',
+            transition: 'all 0.25s ease',
+          }} />
+        </>
+      ) : (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,12,0.6)', transition: 'opacity 0.25s ease' }} />
+      )}
+
+      <div
+        className="card-raised"
+        style={{
+          position: 'fixed', top: cardPos.top, left: cardPos.left, width: CARD_W, padding: '20px 22px',
+          zIndex: 2001, boxShadow: 'var(--shadow-lg)', pointerEvents: 'auto',
+          transition: 'top 0.25s cubic-bezier(.2,.8,.3,1), left 0.25s cubic-bezier(.2,.8,.3,1)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+            Step {stepIndex + 1} of {total}
+          </span>
+          <button onClick={skipTour} title="Skip tour" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontSize: 15 }}>
+            <i className="ph ph-x" />
+          </button>
+        </div>
+        <div style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 19, color: 'var(--ink)', marginBottom: 8 }}>{step.title}</div>
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 18 }}>{step.body}</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button onClick={skipTour} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontSize: 12.5, textDecoration: 'underline' }}>
+            Skip tour
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {stepIndex > 0 && <button className="btn btn-sm" onClick={back}>Back</button>}
+            <button className="btn btn-sm btn-primary" onClick={next}>
+              {stepIndex >= total - 1 ? 'Finish' : 'Next'} <i className="ph ph-arrow-right" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}

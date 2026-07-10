@@ -51,7 +51,7 @@ export default function ReadinessReview() {
           <EmptyState icon="ph-check-circle" title="Nothing to review" sub="Generate some tech packs to evaluate their factory readiness here." color="var(--c-finalcheck)" />
         ) : (
           <>
-            <div className="stat-strip" style={{ marginBottom: 22, maxWidth: 420 }}>
+            <div className="stat-strip" data-tour="readiness-review" style={{ marginBottom: 22, maxWidth: 420 }}>
               <div className="stat-strip-seg">
                 <div className="stat-strip-value">{items.length}</div>
                 <div className="stat-strip-label">Total pieces</div>

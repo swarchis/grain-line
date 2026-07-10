@@ -39,7 +39,7 @@ export default function ContentHub() {
       <div className="content">
         {tab === 'hub' && (
           <>
-            <div className="stats-row">
+            <div className="stats-row" data-tour="content-hub">
               {socialAccounts.map(a => (
                 <div className="stat-card" key={a.platform} style={{ '--stat-accent': 'var(--c-content)' }}>
                   <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

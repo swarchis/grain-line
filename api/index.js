@@ -1,9 +1,13 @@
 // api/index.js
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 
-dotenv.config();
+// Explicit path, not the bare `dotenv.config()` default — that resolves
+// relative to process.cwd(), which depends on how/where this gets launched
+// from and silently loads nothing if cwd isn't api/ itself.
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(cors());
@@ -110,6 +114,50 @@ Return a JSON object with this exact structure:
     const techPackData = await callGemini(prompt, imageBase64);
     console.log("✅ Tech Pack successful");
     res.json({ ok: true, techPackData });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Generates a blank starting silhouette for a garment type that isn't in the
+// preset library (e.g. "balaclava"). Returns flat, stroke-only SVG path data
+// in the same viewBox/style as the hand-built presets in GarmentSilhouette.jsx
+// — this is a starting outline for the founder to sketch over, not finished art.
+app.post('/api/generate-silhouette', async (req, res) => {
+  console.log("📥 Received silhouette generation request...");
+  try {
+    const { garmentType } = req.body;
+    if (!garmentType || !garmentType.trim()) return res.status(400).json({ ok: false, error: 'No garment type provided' });
+
+    const prompt = `You are a technical fashion illustrator drawing a flat, symmetric garment silhouette outline for the garment type: "${garmentType.trim()}".
+
+Style rules — match these exactly, this must look like a simple technical flat, not clip art:
+- Output SVG path "d" strings only, meant to be drawn in a 60×72 viewBox, stroke-only (no fill), centered in the frame with a small margin.
+- Keep it to 1-3 paths total: one closed outline path for the garment's overall shape, and optionally 1-2 simple interior detail paths (a seam line, a neckline curve, a strap) — nothing decorative or textured.
+- Use simple curves (Q or C commands) and lines (L), the way a garment technical flat is drawn — no more than ~12 path commands per path.
+- The shape must be a plausible, recognizable silhouette of "${garmentType.trim()}" as worn/laid flat, front view.
+- If the garment has small fixed points worth marking (e.g. button positions), you may include up to 2 small accent dots as {"cx","cy","r"} objects with r between 1 and 2.
+
+Return ONLY a JSON object with exactly this structure:
+{
+  "paths": ["<svg path d string>", "<svg path d string>"],
+  "accents": [{"cx": <number>, "cy": <number>, "r": <number>}]
+}
+"accents" may be an empty array. Do not include any commentary, only the JSON object.`;
+
+    const result = await callGemini(prompt);
+    if (!Array.isArray(result.paths) || result.paths.length === 0 || result.paths.length > 3) {
+      throw new Error('AI returned an unusable silhouette — try rephrasing the garment type.');
+    }
+    const paths = result.paths.filter(p => typeof p === 'string' && p.length > 0 && p.length < 500);
+    if (paths.length === 0) throw new Error('AI returned an unusable silhouette — try rephrasing the garment type.');
+    const accents = Array.isArray(result.accents)
+      ? result.accents.filter(a => a && typeof a.cx === 'number' && typeof a.cy === 'number' && typeof a.r === 'number').slice(0, 2)
+      : [];
+
+    console.log("✅ Silhouette generation successful");
+    res.json({ ok: true, paths, accents });
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });
@@ -384,6 +432,120 @@ Return a JSON object with exactly this structure:
     const analysis = await callGemini(prompt);
     console.log("✅ Vendor fit analysis successful");
     res.json({ ok: true, analysis });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 3. BILLING (Stripe)
+// ---------------------------------------------------------
+// Lazily constructed so a missing key fails individual requests with a clear
+// message instead of crashing the whole server on boot.
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+const PRICE_IDS = { basic: process.env.STRIPE_PRICE_BASIC, premium: process.env.STRIPE_PRICE_PREMIUM };
+const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+
+function requireStripe(res) {
+  if (!stripe) {
+    res.status(400).json({ ok: false, error: 'Billing is not configured yet — add STRIPE_SECRET_KEY to api/.env and run scripts/setup-stripe-products.js.' });
+    return false;
+  }
+  return true;
+}
+
+// Creates a Stripe Checkout session for a plan upgrade. The frontend redirects
+// the browser to the returned URL; Stripe handles the actual payment form.
+app.post('/api/create-checkout-session', async (req, res) => {
+  if (!requireStripe(res)) return;
+  try {
+    const { plan, brandId, brandEmail } = req.body;
+    const priceId = PRICE_IDS[plan];
+    if (!priceId) return res.status(400).json({ ok: false, error: `Unknown or unconfigured plan: ${plan}` });
+    if (!brandId) return res.status(400).json({ ok: false, error: 'No brand provided' });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      customer_email: brandEmail || undefined,
+      client_reference_id: brandId,
+      metadata: { brandId, plan },
+      success_url: `${APP_URL}/settings?billing=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_URL}/settings?billing=cancelled`,
+    });
+    res.json({ ok: true, url: session.url });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Called by the frontend on the success redirect — verifies the session with
+// Stripe directly (never trusts the URL alone) before the client writes the
+// new plan to Supabase under its own authenticated (RLS-respecting) session.
+app.post('/api/confirm-checkout', async (req, res) => {
+  if (!requireStripe(res)) return;
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ ok: false, error: 'No session id provided' });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+      return res.status(400).json({ ok: false, error: 'Checkout has not completed yet.' });
+    }
+    res.json({
+      ok: true,
+      plan: session.metadata?.plan,
+      brandId: session.client_reference_id,
+      customerId: session.customer,
+      subscriptionId: session.subscription,
+    });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Opens Stripe's hosted Customer Portal so a founder can update payment
+// details, change plans, or cancel — without building any of that UI ourselves.
+app.post('/api/create-portal-session', async (req, res) => {
+  if (!requireStripe(res)) return;
+  try {
+    const { customerId } = req.body;
+    if (!customerId) return res.status(400).json({ ok: false, error: 'No Stripe customer on file for this brand yet.' });
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${APP_URL}/settings`,
+    });
+    res.json({ ok: true, url: session.url });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Reconciles a brand's plan against the real subscription status in Stripe.
+// There's no webhook wired up (that needs a Supabase service-role key, a
+// bigger step than billing itself), so this is what catches a cancellation
+// made through the Stripe portal — called whenever Settings loads for a
+// brand that has a subscription on file, same "ask Stripe directly, then
+// write under the user's own session" pattern as checkout confirmation.
+app.post('/api/subscription-status', async (req, res) => {
+  if (!requireStripe(res)) return;
+  try {
+    const { subscriptionId } = req.body;
+    if (!subscriptionId) return res.status(400).json({ ok: false, error: 'No subscription id provided' });
+
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const isActive = sub.status === 'active' || sub.status === 'trialing';
+    let plan = null;
+    if (isActive) {
+      const priceId = sub.items.data[0]?.price?.id;
+      plan = Object.entries(PRICE_IDS).find(([, id]) => id === priceId)?.[0] || null;
+    }
+    res.json({ ok: true, active: isActive, plan, status: sub.status });
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });

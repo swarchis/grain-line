@@ -79,3 +79,15 @@ export default function GarmentSilhouette({ type, size = 56, color = 'currentCol
     </svg>
   );
 }
+
+// Renders an AI-generated silhouette — same viewBox/stroke-only convention as
+// the hand-built presets above, but the path data comes from /api/generate-silhouette
+// instead of a fixed key, for garment types outside the preset library.
+export function CustomSilhouette({ paths, accents = [], size = 56, color = 'currentColor', strokeWidth = 2 }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size * 1.2} viewBox="0 0 60 72" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round">
+      {(paths || []).map((d, i) => <path key={i} d={d} />)}
+      {(accents || []).map((a, i) => <circle key={i} cx={a.cx} cy={a.cy} r={a.r} fill="currentColor" stroke="none" />)}
+    </svg>
+  );
+}

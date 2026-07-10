@@ -78,7 +78,7 @@ export default function Collections() {
             onCta={() => setShowNew(true)}
           />
         ) : (
-          <div className="grid-2">
+          <div className="grid-2" data-tour="collections">
             {collections.map((c, ci) => {
               const members = products.filter(p => p.collection_id === c.id);
               const totalCost = members.reduce((s, p) => s + p.budget, 0);

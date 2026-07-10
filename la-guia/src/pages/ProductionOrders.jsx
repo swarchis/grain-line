@@ -53,7 +53,7 @@ export default function ProductionOrders() {
           <div className="page-sub">{orders.length} active production jobs</div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-primary" onClick={() => setShowNew(!showNew)}>
+          <button data-tour="production-orders" className="btn btn-primary" onClick={() => setShowNew(!showNew)}>
             <i className="ph ph-plus" /> New Order
           </button>
         </div>

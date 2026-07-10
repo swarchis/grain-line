@@ -7,6 +7,7 @@ import { useProducts } from '../context/ProductsContext.jsx';
 import { useProduction } from '../context/ProductionContext.jsx';
 import { useNotifications } from '../context/NotificationsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useAppUI } from '../context/AppUIContext.jsx';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
 import { PinnedPhoto, PhotoPanel, WaxSeal, DriedFlower, Thumbtack } from '../components/decor.jsx';
 
@@ -115,6 +116,7 @@ export default function Home() {
   const { products, collections, moveProduct } = useProducts();
   const { orders: productionOrders } = useProduction();
   const { notifications } = useNotifications();
+  const { focusSearch } = useAppUI();
   const [draggingId, setDraggingId] = useState(null);
   const [overStage, setOverStage] = useState(null);
 
@@ -161,7 +163,7 @@ export default function Home() {
       <div className="topbar" style={{ border: 'none', background: 'transparent', backdropFilter: 'none' }}>
         <div className="topbar-left" style={{ flex: 0 }} />
         <div className="topbar-right">
-          <button className="canvas-icon-btn" style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'not-allowed', opacity: 0.55 }} title="Search — not wired up yet">
+          <button className="canvas-icon-btn" style={{ width: 36, height: 36, borderRadius: '50%' }} onClick={focusSearch} title="Search everything (Ctrl/⌘K)">
             <i className="ph ph-magnifying-glass" />
           </button>
           <button className="bell-btn" style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', color: 'var(--ink-2)' }} onClick={() => navigate('/notifications')} title="Notifications">
@@ -183,7 +185,7 @@ export default function Home() {
         </div>
 
         {featured && (
-          <div className="card-raised enter" style={{ marginBottom: 24, display: 'grid', gridTemplateColumns: '0.85fr 1.3fr 1fr', gap: 26, padding: '26px 28px', overflow: 'visible', position: 'relative', alignItems: 'center' }}>
+          <div data-tour="home-hero" className="card-raised enter" style={{ marginBottom: 24, display: 'grid', gridTemplateColumns: '0.85fr 1.3fr 1fr', gap: 26, padding: '26px 28px', overflow: 'visible', position: 'relative', alignItems: 'center' }}>
             <PinnedPhoto
               variant="weave" tone={SWATCH_TONES[products.indexOf(featured) % SWATCH_TONES.length]}
               aspect="3 / 4" tilt={-2.5} pinColor="var(--c-materials)"
@@ -268,7 +270,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="card-raised" style={{ padding: 20 }}>
+          <div data-tour="quick-actions" className="card-raised" style={{ padding: 20 }}>
             <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 14 }}>Quick actions</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {QUICK_ACTIONS.map(a => (
@@ -378,6 +380,7 @@ export default function Home() {
 
         <div className="section-label enter enter-5">All products — drag a piece, or drop it on a stage above</div>
 
+        <div data-tour="kanban-board">
         <LayoutGroup>
           {STAGES.map((stage, si) => {
             const stageProducts = products.filter(p => p.stage === stage.key);
@@ -412,6 +415,7 @@ export default function Home() {
             );
           })}
         </LayoutGroup>
+        </div>
       </div>
     </>
   );

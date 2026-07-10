@@ -1,20 +1,29 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProducts } from '../context/ProductsContext.jsx';
-import GarmentSilhouette, { GARMENT_TYPES } from '../components/GarmentSilhouette.jsx';
+import { useAIUsage } from '../context/AIUsageContext.jsx';
+import { getPlan } from '../data/plans.js';
+import GarmentSilhouette, { CustomSilhouette, GARMENT_TYPES } from '../components/GarmentSilhouette.jsx';
 
 const STATUS_COLOR = { Sketching: 'var(--ink-3)', Refining: 'var(--c-design)', Ready: 'var(--green)' };
 
 export default function Design() {
   const navigate = useNavigate();
-  const { products, designs, createDesign } = useProducts();
+  const { products, designs, createDesign, activeBrand } = useProducts();
+  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
   const [showNew, setShowNew] = useState(false);
   const [customType, setCustomType] = useState('');
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState(null);
   const fileRef = useRef(null);
   const designProducts = products.filter(p => p.stage === 'concept' || p.stage === 'design');
 
+  const plan = getPlan(activeBrand?.plan_tier || 'free');
+  const atProductLimit = products.length >= plan.limits.products;
+
   const startFromSilhouette = async (type) => {
+    if (atProductLimit) { navigate('/settings'); return; }
     setLoading(true);
     try {
       const id = await createDesign({ garmentType: type.label, baseType: 'silhouette', silhouette: type.key });
@@ -29,6 +38,7 @@ export default function Design() {
   const startFromUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (atProductLimit) { navigate('/settings'); return; }
     setLoading(true);
     try {
       const id = await createDesign({ garmentType: 'Uploaded mockup', baseType: 'upload', colorway: file.name, file });
@@ -41,14 +51,28 @@ export default function Design() {
   };
 
   const startFromAI = async () => {
-    setLoading(true);
+    const garmentType = customType.trim();
+    if (!garmentType) return;
+    if (atProductLimit) { setGenerateError(`You're at your plan's limit of ${plan.limits.products} active products — upgrade to add more.`); return; }
+    if (!canUseAI) { setGenerateError(plan.limits.aiPerMonth === 0 ? 'AI features need the Basic plan or higher.' : "You've used all your AI generations for this month — upgrade for more."); return; }
+    setGenerating(true);
+    setGenerateError(null);
     try {
-      const id = await createDesign({ garmentType: customType || 'Custom garment', baseType: 'ai-silhouette' });
+      const res = await fetch('http://localhost:3001/api/generate-silhouette', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garmentType }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      await logUsage('silhouette');
+
+      const id = await createDesign({ garmentType, baseType: 'ai-silhouette', aiPaths: { paths: data.paths, accents: data.accents } });
       navigate(`/design/${id}`);
     } catch (err) {
-      alert(err.message);
+      setGenerateError(err.message || 'Could not generate a silhouette for that garment type.');
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
@@ -63,7 +87,7 @@ export default function Design() {
           <div className="page-sub">{designProducts.length} in concept or design</div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-primary" onClick={() => setShowNew(s => !s)} disabled={loading}>
+          <button data-tour="design-new" className="btn btn-primary" onClick={() => setShowNew(s => !s)} disabled={loading}>
             <i className="ph ph-plus" /> {loading ? 'Creating...' : 'New design'}
           </button>
         </div>
@@ -75,6 +99,12 @@ export default function Design() {
             <div className="corner-fold" style={{ '--fold-color': 'var(--c-design)' }} />
             <div className="card-header"><span className="card-title">Start a new design</span></div>
             <div className="card-body">
+              {atProductLimit && (
+                <div className="form-hint" style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', color: 'var(--amber)' }}>
+                  <i className="ph ph-warning" style={{ marginRight: 4 }} /> You're at your {plan.name} plan's limit of {plan.limits.products} active product{plan.limits.products === 1 ? '' : 's'}.{' '}
+                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => navigate('/settings')}>Upgrade to add more</span>.
+                </div>
+              )}
               <div className="section-label" style={{ marginBottom: 12 }}>Start from a preset silhouette</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10, marginBottom: 22 }}>
                 {GARMENT_TYPES.map(t => (
@@ -114,12 +144,27 @@ export default function Design() {
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={startFromUpload} />
               </div>
 
-              <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 'var(--r-sm)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12.5, color: 'var(--ink-3)', flex: 1, minWidth: 200 }}>
-                  Don't see your garment type above? We'll generate a blank starting silhouette for you.
-                </span>
-                <input className="form-input" style={{ width: 160 }} placeholder="e.g. Balaclava" value={customType} onChange={e => setCustomType(e.target.value)} />
-                <button className="btn btn-sm" onClick={startFromAI} disabled={loading}>Generate silhouette</button>
+              <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 'var(--r-sm)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-3)', flex: 1, minWidth: 200 }}>
+                    Don't see your garment type above? AI will sketch a blank starting outline for you to build on.
+                    {canUseAI && <span style={{ color: 'var(--ink-4)' }}> ({aiRemaining} left this month)</span>}
+                  </span>
+                  <input
+                    className="form-input" style={{ width: 160 }} placeholder="e.g. Balaclava"
+                    value={customType} onChange={e => { setCustomType(e.target.value); setGenerateError(null); }}
+                    onKeyDown={e => e.key === 'Enter' && !generating && customType.trim() && startFromAI()}
+                    disabled={generating || !canUseAI}
+                  />
+                  <button className="btn btn-sm" onClick={startFromAI} disabled={generating || loading || !customType.trim() || !canUseAI}>
+                    {generating ? <><i className="ph ph-spinner ph-spin" /> Sketching…</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade to use AI</> : 'Generate silhouette'}
+                  </button>
+                </div>
+                {generateError && (
+                  <div className="form-hint" style={{ color: 'var(--red)', marginTop: 10 }}>
+                    <i className="ph ph-warning" style={{ marginRight: 4 }} /> {generateError}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -134,7 +179,9 @@ export default function Design() {
                 <div className="corner-fold" style={{ '--fold-color': 'var(--c-design)' }} />
                 <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
                   <div style={{ width: 44, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-3)', borderRadius: 8, color: 'var(--ink-3)', flexShrink: 0 }}>
-                    <GarmentSilhouette type={d?.silhouette || 'tee'} size={30} />
+                    {d?.baseType === 'ai-silhouette' && d?.aiPaths?.paths?.length
+                      ? <CustomSilhouette paths={d.aiPaths.paths} accents={d.aiPaths.accents} size={30} />
+                      : <GarmentSilhouette type={d?.silhouette || 'tee'} size={30} />}
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>

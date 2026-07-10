@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useProducts } from '../context/ProductsContext.jsx';
+import { useAIUsage } from '../context/AIUsageContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import GarmentSilhouette from '../components/GarmentSilhouette.jsx';
+import GarmentSilhouette, { CustomSilhouette } from '../components/GarmentSilhouette.jsx';
 import PhotopeaEditor from '../components/PhotopeaEditor.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -19,7 +20,8 @@ export default function DesignDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, designs, getUploadedFile } = useProducts();
-  
+  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+
   const [analyzing, setAnalyzing] = useState(false);
   const [generatingTP, setGeneratingTP] = useState(false);
   const [localAnalysis, setLocalAnalysis] = useState(null);
@@ -37,6 +39,9 @@ export default function DesignDetail() {
 
   const svgMarkup = useMemo(() => {
     if (!design || design.baseType === 'upload') return null;
+    if (design.baseType === 'ai-silhouette' && design.aiPaths?.paths?.length) {
+      return renderToStaticMarkup(<CustomSilhouette paths={design.aiPaths.paths} accents={design.aiPaths.accents} size={900} strokeWidth={4} color="#1a1a1a" />);
+    }
     return renderToStaticMarkup(<GarmentSilhouette type={design.silhouette || 'tee'} size={900} strokeWidth={4} color="#1a1a1a" />);
   }, [design]);
 
@@ -61,9 +66,10 @@ export default function DesignDetail() {
   const statusMeta = CANVAS_STATUS[canvasStatus] || CANVAS_STATUS.ready;
 
   const captureAndAnalyze = async () => {
+    if (!canUseAI) { setCaptureError('AI design analysis is not available on your current plan — upgrade in Settings > Billing.'); return; }
     setCaptureError(null);
     setAnalyzing(true);
-    
+
     try {
       const url = await photopeaRef.current.capture();
       setSnapshot(url);
@@ -85,9 +91,10 @@ export default function DesignDetail() {
       
       const data = await apiRes.json();
       if (data.ok) {
+        await logUsage('analyze-design');
         setLocalAnalysis(data.analysis);
         await supabase.from('designs').update({ analysis: data.analysis }).eq('product_id', id);
-        
+
         setTimeout(() => {
           document.getElementById('analysis-result-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
@@ -103,6 +110,7 @@ export default function DesignDetail() {
   };
 
   const handleConvertToTechPack = async () => {
+    if (!canUseAI) { setCaptureError('AI tech pack generation is not available on your current plan — upgrade in Settings > Billing.'); return; }
     setGeneratingTP(true);
     setCaptureError(null);
     try {
@@ -151,6 +159,7 @@ export default function DesignDetail() {
       
       const data = await apiRes.json();
       if (!data.ok) throw new Error(data.error);
+      await logUsage('generate-tech-pack');
 
       // 3. SAVE EVERYTHING TO DB
       await supabase.from('tech_packs').upsert({
@@ -192,8 +201,8 @@ export default function DesignDetail() {
           <div className="page-sub">{product.category}</div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing}>
-            {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
+          <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI tech pack generation' : undefined}>
+            {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade for AI Tech Pack</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
           </button>
         </div>
       </div>
@@ -249,8 +258,8 @@ export default function DesignDetail() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={analyzing || generatingTP}>
-                    {analyzing ? 'Analyzing...' : 'Analyze Design'}
+                  <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={analyzing || generatingTP || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI design analysis' : `${aiRemaining} AI generations left this month`}>
+                    {analyzing ? 'Analyzing...' : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade</> : 'Analyze Design'}
                   </button>
                   <button className="canvas-icon-btn" onClick={toggleExpand} disabled={toggling}>
                     <i className={`ph ${expanded ? 'ph-corners-in' : 'ph-corners-out'}`} />

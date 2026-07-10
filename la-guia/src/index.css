@@ -505,6 +505,11 @@ img { max-width: 100%; display: block; }
   border-radius: var(--r); border: 1.5px solid var(--border); overflow: hidden;
   background: var(--bg-1); box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column;
+  /* Without an explicit height this shrink-wraps to its header's height in
+     normal (non-fixed-position) flow, squashing the canvas flat — its flex:1
+     child has nothing to distribute. .expanded only "worked" because
+     position:fixed + top/bottom:0 gives it a height independent of this rule. */
+  height: 100%;
 }
 .canvas-panel-header {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

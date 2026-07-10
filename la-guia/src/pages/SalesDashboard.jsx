@@ -5,6 +5,7 @@ import { currency } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import RevenueChart from '../components/RevenueChart.jsx';
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: 'ph-chart-line-up' },
@@ -15,8 +16,10 @@ export default function SalesDashboard() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('overview');
   const { products, loading } = useProducts();
-  
-  const maxRevenue = Math.max(...salesData.monthly.map(m => m.revenue));
+
+  const lastMonth = salesData.monthly[salesData.monthly.length - 1];
+  const prevMonth = salesData.monthly[salesData.monthly.length - 2];
+  const monthDelta = prevMonth ? ((lastMonth.revenue - prevMonth.revenue) / (prevMonth.revenue || 1)) * 100 : null;
 
   return (
     <>
@@ -54,17 +57,18 @@ export default function SalesDashboard() {
               </div>
             </div>
 
-            <div className="card-raised" style={{ marginBottom: 24 }}>
-              <div className="card-header"><span className="card-title">Revenue by month</span></div>
+            <div className="card-raised" data-tour="sales-dashboard" style={{ marginBottom: 24 }}>
+              <div className="card-header">
+                <span className="card-title">Revenue by month</span>
+                {monthDelta !== null && (
+                  <span style={{ fontSize: 12, color: monthDelta >= 0 ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <i className={`ph ${monthDelta >= 0 ? 'ph-arrow-up-right' : 'ph-arrow-down-right'}`} />
+                    {Math.abs(monthDelta).toFixed(0)}% vs {prevMonth.month}
+                  </span>
+                )}
+              </div>
               <div className="card-body">
-                <div className="bar-chart">
-                  {salesData.monthly.map(m => (
-                    <div className="bar-chart-col" key={m.month}>
-                      <div className="bar-chart-bar" style={{ height: `${(m.revenue / maxRevenue) * 100}%` }} />
-                      <div className="bar-chart-label">{m.month}</div>
-                    </div>
-                  ))}
-                </div>
+                <RevenueChart data={salesData.monthly} accent="var(--c-analytics)" />
               </div>
             </div>
 

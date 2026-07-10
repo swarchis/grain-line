@@ -1,32 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase.js';
 import { trustTagClass } from '../lib/format.js';
 import { PhotoPanel } from '../components/decor.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { useMaterials } from '../context/MaterialsContext.jsx';
 
 const SWATCH_TONES = ['clay', 'gold', 'sage', 'ink'];
 
 export default function MaterialLibrary() {
   const navigate = useNavigate();
-  const [materials, setMaterials] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { materials, loading } = useMaterials();
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    async function loadMaterials() {
-      const { data, error } = await supabase
-        .from('materials')
-        .select('*')
-        .order('name', { ascending: true });
-      
-      if (!error) setMaterials(data);
-      setLoading(false);
-    }
-    loadMaterials();
-  }, []);
-
-  const filtered = materials.filter(m => 
+  const filtered = materials.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) || 
     m.category.toLowerCase().includes(search.toLowerCase())
   );
@@ -60,7 +46,7 @@ export default function MaterialLibrary() {
         ) : filtered.length === 0 ? (
           <EmptyState icon="ph-flask" title="No materials found" sub="Try a different search term." />
         ) : (
-          <div className="grid-cards">
+          <div className="grid-cards" data-tour="material-library">
             {filtered.map((m, mi) => (
               <div key={m.id} className="card-raised card-hover" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate(`/materials/${m.id}`)}>
                 <div className="corner-fold" style={{ '--fold-color': 'var(--c-materials)' }} />

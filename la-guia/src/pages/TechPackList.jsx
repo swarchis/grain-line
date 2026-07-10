@@ -45,7 +45,7 @@ export default function TechPackList() {
         ) : items.length === 0 ? (
           <EmptyState icon="ph-ruler" title="No Tech Packs yet" sub="Generate a tech pack from the Design Studio to see it here." color="var(--c-techpack)" />
         ) : (
-          <div className="grid-cards">
+          <div className="grid-cards" data-tour="tech-packs">
             {items.map(p => {
               const tp = techPacks[p.id];
               const warnings = tp?.material_warnings?.length || 0;
