@@ -37,12 +37,14 @@ grainline/
 The frontend was scaffolded with static mock data first, then converted page-by-page to real Supabase data.
 
 **Real (Supabase-backed):**
-Auth · Brands (multi-brand — a user can own or belong to several, switching reloads every context) · Products (with favoriting and permanent delete) · Designs (including AI-generated silhouettes) · Tech Packs (BOM, Measurements, Sampling Checklist — deletable independently of the design) · Collections (deletable — un-groups its products rather than deleting them) · Materials (Library & Usage Analysis, deletable) · Vendors · Quotes · Production Orders · Notifications · Settings · Team members & permissions (invite-by-email with automated Resend delivery) · User preferences (theme, onboarding state) · Command palette / global search (entity content **and** sidebar pages) · Keyboard shortcuts · Onboarding walkthrough (auto-scrolls the highlighted feature into view, first-visit only) · Personalized Home dashboard (Continue where you left off, AI suggestions, Project health, Favorite projects, Calendar timeline, Recent activity, Upcoming deadlines, Quick actions) · Sales Dashboard & product break-even tracking (Shopify integration)
+Auth · Brands (multi-brand — a user can own or belong to several, switching reloads every context) · Products (with favoriting and permanent delete) · Designs (including AI-generated silhouettes) · Tech Packs (BOM, Measurements, Sampling Checklist — deletable independently of the design) · Collections (deletable — un-groups its products rather than deleting them) · Materials (Library & Usage Analysis, deletable) · Vendors · Quotes · Production Orders · Notifications · Settings · Team members & permissions (invite-by-email with automated Resend delivery) · User preferences (theme, onboarding state) · Command palette / global search (entity content **and** sidebar pages) · Keyboard shortcuts · Onboarding walkthrough (auto-scrolls the highlighted feature into view, first-visit only) · Personalized Home dashboard (Continue where you left off, AI suggestions, Project health, Favorite projects, Calendar timeline, Recent activity, Upcoming deadlines, Quick actions, type-or-draw sticky notes with 3-slot swap storage) · Sales Dashboard & product break-even tracking (Shopify integration) · **AI Design Studio** (see below)
 
 Every delete (design, tech pack, material, collection) goes through `ConfirmDeleteModal` (`la-guia/src/components/ConfirmDeleteModal.jsx`) — a deliberate trash-icon click opens it, and the actual delete button stays disabled until you type the item's exact name, so an accidental click or stray Enter key can't finish it.
 
+**AI Design Studio** (`la-guia/src/components/design-studio/`, opened as tabs on a Design's detail page): real Gemini image generation/editing, not mocked. One tool (sketch-to-design, AI text edit, background remover, recolor, fabric swap, pattern generator, logo placement, mockup generator, flat sketch, alternate views) is one call to `/api/design/ai-image` with a mode-specific prompt template — see the API reference below. Also real: a moodboard (uploaded reference images), an AI color palette generator, AI trend inspiration (Tavily-grounded, cached once per category per day), AI-generated design variants, version history (every saved AI result), and a comment thread — all Supabase-backed per design. AI design critique (`/api/analyze-design`, scores a canvas snapshot) predates this and lives on the Canvas tab.
+
 **Real, needs your own keys to actually process/send:**
-Billing & subscription plans (Free / Basic / Premium) — real Stripe Checkout, Customer Portal, and plan-limit enforcement (active products, team seats, AI generations/month). Sales data — real Shopify Custom App OAuth. Team invite emails — real Resend delivery (see Gotchas below for its free-tier limits). A handful of Premium feature lines are marked "Coming soon" in the UI — real marketing copy for where the tier is headed, not built into the app yet.
+Billing & subscription plans (Free / Basic / Premium) — real Stripe Checkout, Customer Portal, and plan-limit enforcement (active products, team seats, AI generations/month). Sales data — real Shopify Custom App OAuth. Team invite emails — real Resend delivery (see Gotchas below for its free-tier limits). AI Design Studio's image tools need `GEMINI_API_KEY` to have access to the `gemini-2.5-flash-image` model specifically (a paid/billed model, distinct from the free-tier-friendly `gemini-flash-lite-latest` used everywhere else in this repo) — see Gotchas. A handful of Premium feature lines are marked "Coming soon" in the UI — real marketing copy for where the tier is headed, not built into the app yet.
 
 **Still static mock data** (`la-guia/src/data/mockData.js`):
 `ContentHub.jsx`
@@ -63,8 +65,9 @@ You need access to your Supabase project. Run these in the SQL Editor **in order
 8. `supabase/migrations/008_billing.sql` (plan_tier + Stripe IDs on `brands`, `ai_usage_log` for metering)
 9. `supabase/migrations/009_shopify.sql` (Shopify connection + order sync tables)
 10. `supabase/migrations/010_favorites.sql` (`is_favorite` on `products`, powers the Favorite projects dashboard widget)
+11. `supabase/migrations/011_design_studio.sql` — **required** for AI Design Studio and the Home dashboard's sticky notes: adds `moodboard`/`palette`/`variants` columns to `designs`, new `design_versions` and `design_comments` tables (with RLS), and a new `brand_notes` table (with RLS) for the 3-slot sticky notes.
 
-Migrations 002–010 use `IF NOT EXISTS`/`ADD COLUMN IF NOT EXISTS`, so they're safe no-ops on a DB that already has those columns — run them anyway on a fresh project, in order.
+Migrations 002–011 use `IF NOT EXISTS`/`ADD COLUMN IF NOT EXISTS`, so they're safe no-ops on a DB that already has those columns — run them anyway on a fresh project, in order.
 
 - **Storage bucket**: A public bucket named `mockups` must exist for Design Studio snapshots.
 - **Auth**: "Confirm email" should be disabled in Auth settings for local testing.
@@ -135,6 +138,9 @@ Add `RESEND_API_KEY` to `api/.env`. Without it, invites still create a real `bra
 | `/api/shopify/callback` | Completes Shopify OAuth and stores the access token |
 | `/api/shopify/fetch-orders` | Pulls recent orders for Sales Dashboard analytics |
 | `/api/send-invite` | Dispatches teammate invitation emails via Resend |
+| `/api/design/ai-image` | AI Design Studio's single image endpoint — `{ mode, prompt, images }`, one of 11 modes (sketch-to-design, ai-edit, bg-remove, recolor, fabric-swap, pattern, logo-placement, mockup, flat-sketch, view, variant), returns base64 image data |
+| `/api/design/color-palette` | Suggests a 5-color palette from a design image or a text brief |
+| `/api/design/trend-inspiration` | Tavily-grounded design trend research for a garment category |
 
 ---
 
@@ -148,7 +154,9 @@ Add `RESEND_API_KEY` to `api/.env`. Without it, invites still create a real `bra
 
 - **Never commit `node_modules`.**
 - **Gemini Search grounding needs billing** — use Tavily instead.
+- **AI Design Studio needs `gemini-2.5-flash-image` access on your `GEMINI_API_KEY`** — this is a separate, billed image-generation model from `gemini-flash-lite-latest` (used for every other AI feature in this repo, and usable on Gemini's free tier). If the key doesn't have access, every AI Design Studio tool (sketch-to-design, edit, background remover, recolor, fabric swap, pattern, logo placement, mockup, flat sketch, views, variants) will fail with a Gemini API error surfaced inline in that tool's card — check your Google AI Studio billing if that happens.
 - **Photopea resizing** — the container doesn't reliably resize; use the capture/remount pattern in `DesignDetail.jsx`.
 - **Resend testing** — on the free tier without a verified domain, Resend only allows sending emails to the address you signed up with; invites to any other address will silently fail to deliver (the `brand_members` row is still created correctly).
 - **RLS was off almost everywhere before `007_teams_and_rls.sql`** — if you forked this project earlier and skipped that migration, any authenticated client could read/write any brand's data. Run it.
 - **"Continue where you left off" is tracked in `localStorage`**, per brand, per browser — it doesn't sync across devices since there's no server-side "last viewed" column.
+- **Sticky notes' "active slot" (which of the 3 notes is shown large) is tracked in `localStorage`** too, per brand, per browser, for the same reason — the note *content* is real and synced via `brand_notes`, only which one is currently "large" is local.

@@ -54,11 +54,11 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
     capture: () => new Promise((resolve, reject) => {
       const win = iframeRef.current?.contentWindow;
       if (!win) { reject(new Error('Canvas iframe not found. Please refresh.')); return; }
-      
+
       pendingCapture.current = { resolve, reject };
       // Force request flat image
       win.postMessage("app.activeDocument.saveToOE('png');", '*');
-      
+
       setTimeout(() => {
         if (pendingCapture.current) {
           pendingCapture.current.reject(new Error('Capture timed out. Make sure you drew something on the canvas.'));
@@ -66,6 +66,13 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
         }
       }, 8000);
     }),
+    // Replaces the canvas contents with a data URL (or any URL Photopea can
+    // fetch) — used to load an AI Studio result back onto the working canvas.
+    openImage: (dataUrl) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(`app.open("${dataUrl}")`, '*');
+    },
   }));
 
   const handleLoad = async () => {

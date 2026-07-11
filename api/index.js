@@ -61,6 +61,54 @@ async function callGemini(prompt, imageBase64 = null) {
   return JSON.parse(cleanAIJSON(rawText));
 }
 
+const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
+const GEMINI_IMAGE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL_NAME}:generateContent`;
+
+// Sends a text prompt plus zero or more reference images to Gemini's image
+// model and returns the generated/edited image as base64. Unlike callGemini
+// (which asks for structured JSON back), this model's native output IS an
+// image — no responseModalities config needed to get one back.
+async function callGeminiImage(prompt, imageInputsBase64 = []) {
+  const parts = [{ text: prompt }];
+  imageInputsBase64.forEach(b64 => {
+    if (b64) parts.push({ inline_data: { mime_type: "image/png", data: b64 } });
+  });
+
+  const payload = {
+    contents: [{ parts }],
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
+  };
+
+  const response = await fetch(`${GEMINI_IMAGE_URL}?key=${process.env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    console.error("❌ Gemini Image API Error:", JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || `Gemini Image Error: ${response.status}`);
+  }
+
+  const responseParts = data.candidates?.[0]?.content?.parts || [];
+  const imagePart = responseParts.find(p => p.inline_data || p.inlineData);
+  if (!imagePart) {
+    if (data.candidates?.[0]?.finishReason === 'SAFETY') {
+      throw new Error("AI safety block — try a different prompt or image.");
+    }
+    const textPart = responseParts.find(p => p.text);
+    throw new Error(textPart?.text ? `AI didn't return an image: ${textPart.text}` : "The AI didn't return an image. Try rephrasing your request.");
+  }
+  const inline = imagePart.inline_data || imagePart.inlineData;
+  return { base64: inline.data, mimeType: inline.mime_type || inline.mimeType || 'image/png' };
+}
+
 // ---------------------------------------------------------
 // 1. DESIGN & TECH PACK ENDPOINTS
 // ---------------------------------------------------------
@@ -644,6 +692,116 @@ Return 2 to 4 suggestions, ordered most important first. Use "warning" only for 
     const result = await callGemini(prompt);
     console.log("✅ Dashboard suggestions successful");
     res.json({ ok: true, suggestions: result.suggestions || [] });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 6. AI DESIGN STUDIO — image generation & editing
+// ---------------------------------------------------------
+// One endpoint, many "modes" — every image tool (sketch-to-design, edit,
+// background removal, recoloring, fabric swap, pattern generation, logo
+// placement, mockup generation, flat sketch, alternate views, variants) is
+// fundamentally the same call to the image model with a different prompt
+// template and different reference images, so the prompt engineering lives
+// here in one place rather than duplicated per tool.
+const IMAGE_MODE_PROMPTS = {
+  'sketch-to-design': (p) => `You are a fashion technical illustrator. Take this rough sketch and render it as a clean, professional garment design image — polished linework, realistic fabric drape and shading, on a plain white background, single garment only, no model.${p ? ` Style direction: ${p}.` : ''} Keep the same silhouette and proportions as the sketch — you're rendering it, not redesigning it.`,
+  'ai-edit': (p) => `You are editing this garment design image. Apply exactly this change, keeping everything else about the garment identical: ${p || 'make a small refinement'}. Keep the same camera angle, background, and overall composition.`,
+  'bg-remove': () => `Remove the background from this image completely, replacing it with a plain solid white background. Keep the garment itself pixel-identical — do not alter its color, shape, or details.`,
+  'recolor': (p) => `Recolor the garment in this image to ${p || 'a different color'}, preserving all fabric texture, shading, folds, and construction details exactly as they are — only the color changes.`,
+  'fabric-swap': (p) => `Change the fabric of the garment in this image to ${p || 'a different fabric'}, updating texture and drape to realistically reflect that fabric while keeping the exact same garment silhouette, cut, and design details.`,
+  'pattern': (p) => `Generate a seamless, tileable textile pattern image: ${p || 'an abstract pattern'}. The image should be a flat, repeating pattern swatch suitable for printing on fabric — no garment, no background scene, just the pattern itself filling the frame.`,
+  'logo-placement': (p) => `The first image is a garment design. The second image is a logo. Composite the logo onto the garment${p ? ` at this placement: ${p}` : ' in a natural, appropriately-sized placement (e.g. left chest for a top)'}, matching the garment's perspective, lighting, and fabric texture so it looks printed/embroidered on, not pasted flat.`,
+  'mockup': (p) => `Create a professional product photography mockup of this garment design: ${p || 'worn by a model in a studio setting with clean, even lighting'}. Keep the garment's design, color, and details exactly as shown in the reference image.`,
+  'flat-sketch': () => `Convert this garment image into a clean technical flat sketch — precise black linework on a white background, no shading or color, front view, the kind used in a professional tech pack.`,
+  'view': (p) => `Generate the ${p || 'back'} view of this exact same garment — same color, fabric, and design details as the reference image, just shown from a different angle.`,
+  'variant': (p) => `Create a design variation of this garment: ${p || 'a stylistic variation'}. Keep it recognizably related to the original but with this specific change applied.`,
+};
+const MODES_WITHOUT_IMAGE = ['pattern']; // the only mode that can run as pure text-to-image
+
+app.post('/api/design/ai-image', async (req, res) => {
+  console.log("📥 Received AI image request...");
+  try {
+    const { mode, prompt, images } = req.body;
+    const builder = IMAGE_MODE_PROMPTS[mode];
+    if (!builder) return res.status(400).json({ ok: false, error: 'Unknown AI image mode: ' + mode });
+    if ((!images || images.length === 0) && !MODES_WITHOUT_IMAGE.includes(mode)) {
+      return res.status(400).json({ ok: false, error: 'No reference image provided' });
+    }
+    const fullPrompt = builder(prompt);
+    const result = await callGeminiImage(fullPrompt, images || []);
+    console.log("✅ AI image successful:", mode);
+    res.json({ ok: true, imageBase64: result.base64, mimeType: result.mimeType });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/design/color-palette', async (req, res) => {
+  console.log("📥 Received color palette request...");
+  try {
+    const { imageBase64, brief } = req.body;
+    if (!imageBase64 && !brief) return res.status(400).json({ ok: false, error: 'Provide a design image or a brief description' });
+
+    const prompt = `You are a fashion colorist advising an independent clothing brand. ${imageBase64 ? 'Based on the attached garment design image,' : `Based on this brief: "${brief}",`} suggest a cohesive 5-color palette for this product or collection — think about what would actually work together in production (dye-ability, how the accent reads against the base), not just what looks nice in a swatch.
+
+Return a JSON object with exactly this structure:
+{ "palette": [ { "name": "descriptive color name", "hex": "#RRGGBB", "role": "primary" | "secondary" | "accent" | "neutral" } ] }
+Exactly 5 entries: one primary, one secondary, one accent, and two neutrals.`;
+
+    const result = await callGemini(prompt, imageBase64 || null);
+    console.log("✅ Color palette successful");
+    res.json({ ok: true, palette: result.palette || [] });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/design/trend-inspiration', async (req, res) => {
+  console.log("📥 Received trend inspiration request...");
+  try {
+    const { category } = req.body;
+    if (!category || !category.trim()) return res.status(400).json({ ok: false, error: 'No garment category provided' });
+    if (!process.env.TAVILY_API_KEY || process.env.TAVILY_API_KEY.startsWith('get_a_free_key')) {
+      return res.status(400).json({ ok: false, error: 'TAVILY_API_KEY is not set in api/.env — get a free key at tavily.com' });
+    }
+
+    const searchRes = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: process.env.TAVILY_API_KEY,
+        query: `${category} fashion design trends this season silhouettes colors fabrics`,
+        search_depth: 'advanced',
+        max_results: 10,
+      }),
+    }).then(r => r.json());
+    if (searchRes.error) throw new Error(searchRes.error);
+
+    const results = searchRes.results || [];
+    if (results.length === 0) {
+      return res.json({ ok: true, trends: [] });
+    }
+
+    const prompt = `A fashion brand founder wants current design trend inspiration for: "${category}"
+
+Real web search results:
+${results.map((r, i) => `[${i}] ${r.title}\n${(r.content || '').slice(0, 700)}`).join('\n\n')}
+
+Synthesize this into concrete, actionable design trend points a founder could actually use when briefing a design — silhouettes, colors, fabrics, details/trims. Don't invent trends not supported by the search results; if the results are thin, return fewer, more grounded points rather than padding it out.
+
+Return a JSON object with exactly this structure:
+{ "trends": [ { "theme": "short trend name", "detail": "1-2 sentence description of what this means for the design", "category": "silhouette" | "color" | "fabric" | "detail" } ] }
+Return 3 to 6 entries.`;
+
+    const result = await callGemini(prompt);
+    console.log("✅ Trend inspiration successful");
+    res.json({ ok: true, trends: result.trends || [] });
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
     res.status(500).json({ ok: false, error: error.message });

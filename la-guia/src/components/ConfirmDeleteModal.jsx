@@ -8,11 +8,13 @@ import { createPortal } from 'react-dom';
 export default function ConfirmDeleteModal({ open, onClose, onConfirm, itemLabel, itemName, warning }) {
   const [typed, setTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     setTyped('');
     setDeleting(false);
+    setError(null);
     const onKey = e => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -25,12 +27,13 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, itemLabel
   const handleConfirm = async () => {
     if (!matches || deleting) return;
     setDeleting(true);
+    setError(null);
     try {
       await onConfirm();
       onClose();
     } catch (err) {
       setDeleting(false);
-      alert('Could not delete: ' + err.message);
+      setError('Could not delete: ' + err.message);
     }
   };
 
@@ -66,6 +69,8 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, itemLabel
             style={{ width: '100%' }}
           />
         </div>
+
+        {error && <div style={{ fontSize: 12, color: 'var(--red)' }}>{error}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
           <button className="btn btn-sm" onClick={onClose}>Cancel</button>

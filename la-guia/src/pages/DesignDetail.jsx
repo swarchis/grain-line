@@ -7,8 +7,14 @@ import { supabase } from '../lib/supabase.js';
 import GarmentSilhouette, { CustomSilhouette } from '../components/GarmentSilhouette.jsx';
 import PhotopeaEditor from '../components/PhotopeaEditor.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
+import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
+import AIStudioTab from '../components/design-studio/AIStudioTab.jsx';
+import InspirationTab from '../components/design-studio/InspirationTab.jsx';
+import VariantsTab from '../components/design-studio/VariantsTab.jsx';
+import HistoryTab from '../components/design-studio/HistoryTab.jsx';
+import { blobToBase64 } from '../lib/designImages.js';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const CANVAS_STATUS = {
@@ -16,6 +22,13 @@ const CANVAS_STATUS = {
   ready: { label: 'Canvas ready', color: 'var(--green)' },
   error: { label: 'Could not load canvas', color: 'var(--red)' },
 };
+const TABS = [
+  { key: 'canvas', label: 'Canvas', icon: 'ph-pencil-simple' },
+  { key: 'ai-studio', label: 'AI Studio', icon: 'ph-sparkle' },
+  { key: 'inspiration', label: 'Inspiration', icon: 'ph-images' },
+  { key: 'variants', label: 'Variants', icon: 'ph-shuffle' },
+  { key: 'history', label: 'History & Comments', icon: 'ph-clock-counter-clockwise' },
+];
 
 export default function DesignDetail() {
   const { id } = useParams();
@@ -33,11 +46,46 @@ export default function DesignDetail() {
   const [captureError, setCaptureError] = useState(null);
   const [restoreFile, setRestoreFile] = useState(null);
   const [toggling, setToggling] = useState(false);
+  const [tab, setTab] = useState('canvas');
+  const [moodboard, setMoodboard] = useState([]);
+  const [palette, setPalette] = useState([]);
+  const [variants, setVariants] = useState([]);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const photopeaRef = useRef(null);
 
   const product = products.find(p => p.id === id);
   const design = designs[id];
   const uploadedFile = getUploadedFile(id);
+
+  // Moodboard/palette/variants live on the `designs` row but aren't part of
+  // ProductsContext's designs map (kept lean for what every page needs) —
+  // loaded directly here, same pattern TechPackDetail uses for tech_packs.
+  useEffect(() => {
+    async function loadStudioData() {
+      const { data } = await supabase.from('designs').select('moodboard, palette, variants').eq('product_id', id).single();
+      if (data) {
+        setMoodboard(data.moodboard || []);
+        setPalette(data.palette || []);
+        setVariants(data.variants || []);
+      }
+    }
+    loadStudioData();
+  }, [id]);
+
+  const persistStudioField = async (field, value) => {
+    await supabase.from('designs').update({ [field]: value }).eq('product_id', id);
+  };
+
+  const captureCanvasBase64 = async () => {
+    const url = await photopeaRef.current.capture();
+    const blob = await fetch(url).then(r => r.blob());
+    return blobToBase64(blob);
+  };
+
+  const applyResultToCanvas = (url) => {
+    photopeaRef.current?.openImage(url);
+    setTab('canvas');
+  };
 
   const svgMarkup = useMemo(() => {
     if (!design || design.baseType === 'upload') return null;
@@ -225,6 +273,8 @@ export default function DesignDetail() {
         <FlowStepper productId={id} current="design" />
       </div>
 
+      <TabBar tabs={TABS} active={tab} onChange={setTab} accent="var(--c-design)" />
+
       <div className="content">
         {captureError && (
           <div className="alert" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
@@ -233,6 +283,10 @@ export default function DesignDetail() {
           </div>
         )}
 
+        {/* Kept mounted (display:none, not unmounted) when other tabs are active so
+            the Photopea iframe never reloads and in-progress canvas work survives
+            switching to AI Studio/Inspiration/etc. and back. */}
+        <div style={{ display: tab === 'canvas' ? 'block' : 'none' }}>
         {analysis && (
           <div style={{ maxWidth: 1080, marginBottom: 16 }} id="analysis-result-card">
             <div className="card-raised">
@@ -315,6 +369,51 @@ export default function DesignDetail() {
             </div>
           </div>
         </div>
+        </div>
+
+        {tab === 'ai-studio' && (
+          <AIStudioTab
+            productId={id}
+            onCapture={captureCanvasBase64}
+            onApplyToCanvas={applyResultToCanvas}
+            canUseAI={canUseAI}
+            aiRemaining={aiRemaining}
+            logUsage={logUsage}
+            onVersionSaved={() => setHistoryRefreshKey(k => k + 1)}
+          />
+        )}
+
+        {tab === 'inspiration' && (
+          <InspirationTab
+            productId={id}
+            category={design.garmentType}
+            moodboard={moodboard}
+            onMoodboardChange={v => { setMoodboard(v); persistStudioField('moodboard', v); }}
+            palette={palette}
+            onPaletteChange={v => { setPalette(v); persistStudioField('palette', v); }}
+            onCapture={captureCanvasBase64}
+            canUseAI={canUseAI}
+            aiRemaining={aiRemaining}
+            logUsage={logUsage}
+          />
+        )}
+
+        {tab === 'variants' && (
+          <VariantsTab
+            productId={id}
+            variants={variants}
+            onChange={v => { setVariants(v); persistStudioField('variants', v); }}
+            onCapture={captureCanvasBase64}
+            onApplyToCanvas={applyResultToCanvas}
+            canUseAI={canUseAI}
+            aiRemaining={aiRemaining}
+            logUsage={logUsage}
+          />
+        )}
+
+        {tab === 'history' && (
+          <HistoryTab key={historyRefreshKey} productId={id} onApplyToCanvas={applyResultToCanvas} />
+        )}
       </div>
     </>
   );

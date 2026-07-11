@@ -9,12 +9,13 @@ import { useNotifications } from '../context/NotificationsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
-import { PinnedPhoto, PhotoPanel, WaxSeal, DriedFlower, Thumbtack } from '../components/decor.jsx';
+import { PinnedPhoto, PhotoPanel, WaxSeal, Thumbtack } from '../components/decor.jsx';
 import ContinueWhereYouLeftOff from '../components/dashboard/ContinueWhereYouLeftOff.jsx';
 import AISuggestions from '../components/dashboard/AISuggestions.jsx';
 import ProjectHealth from '../components/dashboard/ProjectHealth.jsx';
 import FavoriteProjects from '../components/dashboard/FavoriteProjects.jsx';
 import CalendarTimeline from '../components/dashboard/CalendarTimeline.jsx';
+import StickyNotes from '../components/dashboard/StickyNotes.jsx';
 
 const QUICK_ACTIONS = [
   { label: 'New Product', desc: 'Start from a sketch or upload', icon: 'ph-plus-circle', color: 'var(--c-design)', path: '/design' },
@@ -307,15 +308,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="card-raised" style={{ padding: '20px 22px', position: 'relative' }}>
-            <div style={{ position: 'absolute', bottom: 16, right: 18 }}>
-              <DriedFlower size={30} />
-            </div>
-            <div className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, marginBottom: 10 }}>Notes from the atelier</div>
-            <p style={{ fontFamily: 'var(--hand)', fontSize: 18, color: 'var(--ink-2)', lineHeight: 1.4, maxWidth: 170 }}>
-              "Discipline in process creates freedom in design."
-            </p>
-          </div>
+          <StickyNotes />
         </div>
 
         <div className="enter enter-3" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 30, alignItems: 'stretch' }}>
