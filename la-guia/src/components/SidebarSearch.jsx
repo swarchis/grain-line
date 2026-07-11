@@ -6,6 +6,7 @@ import { useMaterials } from '../context/MaterialsContext.jsx';
 import { useNotifications } from '../context/NotificationsContext.jsx';
 import { useProduction } from '../context/ProductionContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
+import { NAV_PAGES } from '../data/navPages.js';
 
 // Real content search — every field checked is an actual field a founder
 // reads on that entity's own page, not just its name. Shows which field
@@ -41,6 +42,14 @@ export default function SidebarSearch() {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const out = [];
+
+    // Sidebar pages themselves — matches the page name or a synonym/keyword
+    // for what's on it, so "billing" finds Settings and "sketch" finds
+    // Designs even though neither word is in the nav label.
+    NAV_PAGES.forEach(page => {
+      const snippet = firstMatch([['page', page.label], ['also known as', page.keywords]], q);
+      if (snippet) out.push({ id: `page-${page.path}`, group: 'Pages', icon: page.icon, title: page.label, snippet, path: page.path });
+    });
 
     products.forEach(p => {
       const snippet = firstMatch([['name', p.name], ['category', p.category], ['stage', p.stage], ['risk', p.risk]], q);

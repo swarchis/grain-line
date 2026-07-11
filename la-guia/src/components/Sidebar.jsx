@@ -9,29 +9,7 @@ import { useAppUI } from '../context/AppUIContext.jsx';
 import { useTheme } from '../lib/useTheme.js';
 import { WaxSeal } from './decor.jsx';
 import SidebarSearch from './SidebarSearch.jsx';
-
-const NAV_GROUPS = [
-  { label: 'Navigation', tourId: 'nav-navigation', items: [
-    { path: '/', icon: 'ph-house', label: 'Home', color: 'var(--c-home)' },
-    { path: '/collections', icon: 'ph-stack', label: 'Collections', color: 'var(--c-organization)' },
-    { path: '/design', icon: 'ph-pencil-simple', label: 'Designs', color: 'var(--c-design)' },
-    { path: '/tech-packs', icon: 'ph-ruler', label: 'Tech Packs', color: 'var(--c-techpack)' },
-    { path: '/materials', icon: 'ph-flask', label: 'Material Library', color: 'var(--c-materials)' },
-    { path: '/vendors', icon: 'ph-handshake', label: 'Vendors', color: 'var(--c-vendors)' },
-    { path: '/quotes', icon: 'ph-file-text', label: 'Quotes & Pricing', color: 'var(--c-vendors)' },
-  ] },
-  { label: 'Production', tourId: 'nav-production', items: [
-    { path: '/production', icon: 'ph-package', label: 'Production Orders', color: 'var(--c-materials)' },
-    { path: '/readiness', icon: 'ph-check-circle', label: 'Readiness Review', color: 'var(--c-finalcheck)' },
-  ] },
-  { label: 'Analytics', items: [
-    { path: '/sales', icon: 'ph-chart-line-up', label: 'Dashboard', color: 'var(--c-analytics)' },
-  ] },
-  { label: 'Tools', items: [
-    { path: '/content', icon: 'ph-megaphone', label: 'Content Hub', color: 'var(--c-content)' },
-    { path: '/notifications', icon: 'ph-bell', label: 'Notifications', color: 'var(--c-settings)' },
-  ] },
-];
+import { NAV_GROUPS } from '../data/navPages.js';
 
 function GrainlineMark({ size = 22 }) {
   return (

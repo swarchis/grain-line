@@ -608,6 +608,48 @@ app.post('/api/send-invite', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------
+// 5. DASHBOARD AI SUGGESTIONS
+// ---------------------------------------------------------
+const SUGGESTION_CATEGORIES = ['readiness', 'deadline', 'vendor', 'budget', 'team', 'billing', 'design', 'general'];
+
+app.post('/api/dashboard-suggestions', async (req, res) => {
+  console.log("📥 Received dashboard suggestions request...");
+  try {
+    const { brand, products, upcomingDeadlines, gateFlags, aiUsage, seats } = req.body;
+
+    const prompt = `You are a production-operations advisor for an independent clothing brand founder, reviewing their dashboard for anything worth flagging today. Be specific and reference real product names when relevant — never invent products, vendors, or numbers that weren't given to you. If the data below looks genuinely healthy with nothing urgent, say so plainly instead of inventing a concern.
+
+Brand: ${brand?.name || 'Unknown'}, plan tier: ${brand?.plan_tier || 'free'}
+
+Active products (name, stage, readiness %, risk, budget):
+${products && products.length ? products.map(p => `- ${p.name}: ${p.stage}, ${p.readiness}% ready, ${p.risk} risk, $${p.budget || 0} budget`).join('\n') : 'None yet.'}
+
+Products below the 80% readiness gate while in sourcing: ${gateFlags ?? 0}
+
+Upcoming production due dates:
+${upcomingDeadlines && upcomingDeadlines.length ? upcomingDeadlines.map(d => `- ${d.product}: due ${d.due_date} (${d.stage})`).join('\n') : 'None scheduled.'}
+
+AI usage this month: ${aiUsage?.used ?? 0} / ${aiUsage?.limit ?? 0}
+Team seats used: ${seats?.used ?? 0} / ${seats?.limit ?? 0}
+
+Return a JSON object with exactly this structure:
+{
+  "suggestions": [
+    { "category": one of ${JSON.stringify(SUGGESTION_CATEGORIES)}, "severity": "info" | "warning" | "success", "text": "specific, actionable sentence" }
+  ]
+}
+Return 2 to 4 suggestions, ordered most important first. Use "warning" only for things that need action soon (a gate flag, a near-term deadline, hitting a plan limit); use "success" sparingly, only when something is genuinely going well and worth acknowledging; otherwise "info".`;
+
+    const result = await callGemini(prompt);
+    console.log("✅ Dashboard suggestions successful");
+    res.json({ ok: true, suggestions: result.suggestions || [] });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🧠 Backend running on http://localhost:${PORT}`);

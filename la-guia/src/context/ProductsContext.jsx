@@ -165,6 +165,12 @@ export function ProductsProvider({ children }) {
     return data;
   };
 
+  const toggleFavorite = async (id) => {
+    const current = products.find(p => p.id === id);
+    if (!current) return;
+    return updateProduct(id, { is_favorite: !current.is_favorite });
+  };
+
   const createCollection = async ({ name, launchWindow }) => {
     if (!activeBrand) throw new Error("No active brand");
     const { data, error } = await supabase
@@ -247,7 +253,7 @@ export function ProductsProvider({ children }) {
 
   return (
     <ProductsContext.Provider value={{
-      products, collections, moveProduct, updateProduct, designs, createDesign, createCollection,
+      products, collections, moveProduct, updateProduct, toggleFavorite, designs, createDesign, createCollection,
       updateBrand, getUploadedFile, activeBrand, brands, switchBrand, createBrand,
       loading: loading || loadingBrands,
     }}>

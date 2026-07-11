@@ -10,6 +10,11 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
 import { PinnedPhoto, PhotoPanel, WaxSeal, DriedFlower, Thumbtack } from '../components/decor.jsx';
+import ContinueWhereYouLeftOff from '../components/dashboard/ContinueWhereYouLeftOff.jsx';
+import AISuggestions from '../components/dashboard/AISuggestions.jsx';
+import ProjectHealth from '../components/dashboard/ProjectHealth.jsx';
+import FavoriteProjects from '../components/dashboard/FavoriteProjects.jsx';
+import CalendarTimeline from '../components/dashboard/CalendarTimeline.jsx';
 
 const QUICK_ACTIONS = [
   { label: 'New Product', desc: 'Start from a sketch or upload', icon: 'ph-plus-circle', color: 'var(--c-design)', path: '/design' },
@@ -57,7 +62,7 @@ function MoveMenu({ productId, current, anchorRect, onMove, onClose }) {
 
 function PieceCard({ p, dragging, onDragStart, onDragEnd }) {
   const navigate = useNavigate();
-  const { moveProduct } = useProducts();
+  const { moveProduct, toggleFavorite } = useProducts();
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const suppressClick = useRef(false);
@@ -83,6 +88,14 @@ function PieceCard({ p, dragging, onDragStart, onDragEnd }) {
       onClick={() => { if (!suppressClick.current && !menuOpen) navigate(stageLink(p.stage, p.id)); }}
     >
       <div className="washi" style={{ '--washi-color': color }} />
+      <button
+        className="piece-move-btn"
+        style={{ right: 40, color: p.is_favorite ? 'var(--amber)' : undefined }}
+        onClick={e => { e.stopPropagation(); toggleFavorite(p.id); }}
+        title={p.is_favorite ? 'Unstar' : 'Star as favorite'}
+      >
+        <i className={p.is_favorite ? 'ph-fill ph-star' : 'ph ph-star'} />
+      </button>
       <button className="piece-move-btn" onClick={toggleMenu} title="Move to another stage">
         <i className="ph ph-arrows-out-cardinal" />
       </button>
@@ -251,6 +264,17 @@ export default function Home() {
             <div className="stat-value" style={{ color: gateFlags > 0 ? 'var(--amber)' : 'var(--ink)' }}>{gateFlags}</div>
             <div className="stat-delta delta-muted">below readiness threshold</div>
           </div>
+        </div>
+
+        <div className="section-label enter enter-2">Your dashboard</div>
+        <div data-tour="dashboard-widgets" className="enter enter-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18, marginBottom: 18, alignItems: 'stretch' }}>
+          <ContinueWhereYouLeftOff />
+          <AISuggestions />
+          <ProjectHealth />
+        </div>
+        <div className="enter enter-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 18, marginBottom: 30, alignItems: 'stretch' }}>
+          <FavoriteProjects />
+          <CalendarTimeline />
         </div>
 
         <div className="enter enter-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 0.9fr', gap: 18, marginBottom: 30, alignItems: 'stretch' }}>

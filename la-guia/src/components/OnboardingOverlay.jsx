@@ -17,10 +17,23 @@ export default function OnboardingOverlay() {
   const [rect, setRect] = useState(null);
   const [cardPos, setCardPos] = useState(null);
   const pollRef = useRef(null);
+  const stepRef = useRef(step);
+  stepRef.current = step;
 
   // Text updates the instant the step changes — only the highlight box and
   // card position animate toward the new target, so there's never a blank
   // gap between steps, just the card visibly sliding to where it's going.
+  //
+  // The scroll itself is instant (not smooth) so its effect on layout is
+  // synchronous — `scrollIntoView` with `behavior: 'auto'` updates the
+  // scroll position before the next line runs, so `getBoundingClientRect()`
+  // right after it already reflects the post-scroll position. An earlier
+  // version used smooth-scroll plus an async "wait for it to settle" step;
+  // clicking through steps faster than that settle time could resolve
+  // raced two in-flight waits against each other and left the highlight
+  // stuck on a stale step. Reading the position synchronously removes the
+  // race entirely — the highlight box's own CSS transition still animates
+  // it gliding to the new spot, so the motion looks the same either way.
   useEffect(() => {
     if (!active || !step) return;
     clearTimeout(pollRef.current);
@@ -29,7 +42,21 @@ export default function OnboardingOverlay() {
     let attempts = 0;
     const tryFind = () => {
       const el = findTarget(step);
-      if (el) { setRect(el.getBoundingClientRect()); return; }
+      if (el) {
+        let r = el.getBoundingClientRect();
+        const vh = window.innerHeight;
+        // Leave room for the 320px-wide card that sits above/below the
+        // target — if the target is close enough to an edge that the card
+        // wouldn't fit, scroll it toward the center instead of just barely
+        // into view.
+        const outOfView = r.top < 90 || r.bottom > vh - 230;
+        if (outOfView) {
+          el.scrollIntoView({ behavior: 'auto', block: 'center' });
+          r = el.getBoundingClientRect();
+        }
+        setRect(r);
+        return;
+      }
       if (!step.selector) { setRect(null); return; }
       attempts += 1;
       if (attempts < 30) pollRef.current = setTimeout(tryFind, 40);
@@ -39,18 +66,28 @@ export default function OnboardingOverlay() {
     return () => clearTimeout(pollRef.current);
   }, [active, step, location.pathname]);
 
+  // Keeps the highlight glued to its target if the founder manually scrolls
+  // or resizes the window mid-step (the initial placement above only runs
+  // once per step change). Attached exactly once for the component's whole
+  // lifetime and reads the current step through a ref rather than a
+  // per-step closure — re-attaching this listener on every step change
+  // relied on cleanup-and-reattach happening in perfect lockstep with state
+  // updates, and clicking through steps faster than a render could land
+  // left it bound to a stale step's element. Reading through a ref can
+  // never go stale: whatever's on screen right now is what it measures.
   useEffect(() => {
-    if (!rect) return;
-    const el = step?.selector && findTarget(step);
-    if (!el) return;
-    const onReposition = () => setRect(el.getBoundingClientRect());
+    const onReposition = () => {
+      const s = stepRef.current;
+      const el = s?.selector && findTarget(s);
+      if (el) setRect(el.getBoundingClientRect());
+    };
     window.addEventListener('resize', onReposition);
     window.addEventListener('scroll', onReposition, true);
     return () => {
       window.removeEventListener('resize', onReposition);
       window.removeEventListener('scroll', onReposition, true);
     };
-  }, [rect, step]);
+  }, []);
 
   // Compute where the card should sit for the current rect (or centered if none).
   useEffect(() => {
