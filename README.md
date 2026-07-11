@@ -41,10 +41,15 @@ Auth · Brands (multi-brand — a user can own or belong to several, switching r
 
 Every delete (design, tech pack, material, collection) goes through `ConfirmDeleteModal` (`la-guia/src/components/ConfirmDeleteModal.jsx`) — a deliberate trash-icon click opens it, and the actual delete button stays disabled until you type the item's exact name, so an accidental click or stray Enter key can't finish it.
 
-**AI Design Studio** (`la-guia/src/components/design-studio/`, opened as tabs on a Design's detail page): real Gemini image generation/editing, not mocked. One tool (sketch-to-design, AI text edit, background remover, recolor, fabric swap, pattern generator, logo placement, mockup generator, flat sketch, alternate views) is one call to `/api/design/ai-image` with a mode-specific prompt template — see the API reference below. Also real: a moodboard (uploaded reference images), an AI color palette generator, AI trend inspiration (Tavily-grounded, cached once per category per day), AI-generated design variants, version history (every saved AI result), and a comment thread — all Supabase-backed per design. AI design critique (`/api/analyze-design`, scores a canvas snapshot) predates this and lives on the Canvas tab.
+**AI Design Studio** (`la-guia/src/components/design-studio/`, opened as tabs on a Design's detail page): real image generation, split across two providers by what each tool actually needs to do —
+
+- **Transform tools** (sketch-to-design, AI text edit, background remover, recolor, fabric swap, mockup generator, flat sketch, alternate views) edit the founder's *actual* existing design, so they run on Gemini's image model (`/api/design/ai-image`, one mode-specific prompt template per tool) — it's the one that can take a reference image and hand back a faithfully edited version. Applying a result replaces the canvas outright, since these are genuinely whole-image changes (there's no partial "layer" for "this garment is now green").
+- **Addition tools** (Add Element, Pattern Generator) generate a brand-new, isolated element with no reference to the existing design at all — these run on Stable Diffusion via Pixazo (`/api/design/generate-element`, free/fast SD XL Lightning, since these are meant to be regenerated a few times before one lands). A result never overwrites anything: it's either inserted as a genuinely new, movable/deletable Photopea layer (`PhotopeaEditor.addLayer`, uses Photopea's own `app.open(url, "", true)` smart-object-layer behavior) or downloaded as a transparent PNG for anyone working in Photoshop/Illustrator instead of the in-app canvas. Pixazo's SD models are text-to-image only (confirmed against their docs) — there's no SD endpoint that can take your existing design as input, which is why the transform tools couldn't move here too.
+
+Also real: a moodboard (uploaded reference images), an AI color palette generator, AI trend inspiration (Tavily-grounded, cached once per category per day), AI-generated design variants, version history (every saved AI result), and a comment thread — all Supabase-backed per design. AI design critique (`/api/analyze-design`, scores a canvas snapshot) predates this and lives on the Canvas tab.
 
 **Real, needs your own keys to actually process/send:**
-Billing & subscription plans (Free / Basic / Premium) — real Stripe Checkout, Customer Portal, and plan-limit enforcement (active products, team seats, AI generations/month). Sales data — real Shopify Custom App OAuth. Team invite emails — real Resend delivery (see Gotchas below for its free-tier limits). AI Design Studio's image tools need `GEMINI_API_KEY` to have access to the `gemini-2.5-flash-image` model specifically (a paid/billed model, distinct from the free-tier-friendly `gemini-flash-lite-latest` used everywhere else in this repo) — see Gotchas. A handful of Premium feature lines are marked "Coming soon" in the UI — real marketing copy for where the tier is headed, not built into the app yet.
+Billing & subscription plans (Free / Basic / Premium) — real Stripe Checkout, Customer Portal, and plan-limit enforcement (active products, team seats, AI generations/month). Sales data — real Shopify Custom App OAuth. Team invite emails — real Resend delivery (see Gotchas below for its free-tier limits). AI Design Studio's transform tools need `GEMINI_API_KEY` to have access to the `gemini-2.5-flash-image` model specifically (a paid/billed model, distinct from the free-tier-friendly `gemini-flash-lite-latest` used everywhere else in this repo); its addition tools need a `PIXAZO_API_KEY` — see Gotchas for both. A handful of Premium feature lines are marked "Coming soon" in the UI — real marketing copy for where the tier is headed, not built into the app yet.
 
 **Still static mock data** (`la-guia/src/data/mockData.js`):
 `ContentHub.jsx`
@@ -88,8 +93,11 @@ STRIPE_SECRET_KEY=...
 SHOPIFY_CLIENT_ID=...
 SHOPIFY_CLIENT_SECRET=...
 RESEND_API_KEY=...
+PIXAZO_API_KEY=...
 ```
 `STRIPE_PRICE_BASIC`/`STRIPE_PRICE_PREMIUM` get written into this same file automatically by the billing setup script below.
+
+**Pixazo** (AI Design Studio's addition tools only): get a key from [api-console.pixazo.ai](https://api-console.pixazo.ai/api_keys) and add it as `PIXAZO_API_KEY`. Sent as an `Ocp-Apim-Subscription-Key` header, not `Authorization` — see `callPixazoElement` in `api/index.js` if you're swapping providers again.
 
 ### 3. Frontend (`la-guia/`)
 ```bash
@@ -139,7 +147,8 @@ Add `RESEND_API_KEY` to `api/.env`. Without it, invites still create a real `bra
 | `/api/shopify/callback` | Completes Shopify OAuth and stores the access token |
 | `/api/shopify/fetch-orders` | Pulls recent orders for Sales Dashboard analytics |
 | `/api/send-invite` | Dispatches teammate invitation emails via Resend |
-| `/api/design/ai-image` | AI Design Studio's single image endpoint — `{ mode, prompt, images }`, one of 11 modes (sketch-to-design, ai-edit, bg-remove, recolor, fabric-swap, pattern, logo-placement, mockup, flat-sketch, view, variant), returns base64 image data |
+| `/api/design/ai-image` | AI Design Studio's **transform** endpoint (Gemini) — `{ mode, prompt, images }`, one of 9 modes (sketch-to-design, ai-edit, bg-remove, recolor, fabric-swap, mockup, flat-sketch, view, variant), edits the given reference image, returns base64 |
+| `/api/design/generate-element` | AI Design Studio's **addition** endpoint (Stable Diffusion / Pixazo) — `{ mode, prompt }`, mode is `add-element` or `pattern`, no reference image, returns base64 with a near-white background punched to transparency |
 | `/api/design/color-palette` | Suggests a 5-color palette from a design image or a text brief |
 | `/api/design/trend-inspiration` | Tavily-grounded design trend research for a garment category |
 
@@ -155,7 +164,8 @@ Add `RESEND_API_KEY` to `api/.env`. Without it, invites still create a real `bra
 
 - **Never commit `node_modules`.**
 - **Gemini Search grounding needs billing** — use Tavily instead.
-- **AI Design Studio needs `gemini-2.5-flash-image` access on your `GEMINI_API_KEY`** — this is a separate, billed image-generation model from `gemini-flash-lite-latest` (used for every other AI feature in this repo, and usable on Gemini's free tier). If the key doesn't have access, every AI Design Studio tool (sketch-to-design, edit, background remover, recolor, fabric swap, pattern, logo placement, mockup, flat sketch, views, variants) will fail with a Gemini API error surfaced inline in that tool's card — check your Google AI Studio billing if that happens.
+- **AI Design Studio needs `gemini-2.5-flash-image` access on your `GEMINI_API_KEY`** — this is a separate, billed image-generation model from `gemini-flash-lite-latest` (used for every other AI feature in this repo, and usable on Gemini's free tier). If the key doesn't have access, every **transform** tool (sketch-to-design, edit, background remover, recolor, fabric swap, mockup, flat sketch, views, variants) will fail with a Gemini API error surfaced inline in that tool's card — check your Google AI Studio billing if that happens.
+- **AI Design Studio's addition tools (Add Element, Pattern Generator) need `PIXAZO_API_KEY`**, separately from Gemini — missing/invalid key surfaces as an inline error in those two tool cards specifically, not the transform ones. Pixazo's Stable Diffusion endpoints are text-to-image only (no `image`/`init_image` parameter on SD 3.5, 3.0, or XL) — confirmed directly against their docs before building this, so don't try to route a transform tool through Pixazo later without re-checking; only their separate mask-based Inpainting endpoint takes an image, and that's a different interaction model (needs a mask) than "edit this whole design."
 - **Photopea resizing** — the container doesn't reliably resize; use the capture/remount pattern in `DesignDetail.jsx`.
 - **Resend testing** — on the free tier without a verified domain, Resend only allows sending emails to the address you signed up with; invites to any other address will silently fail to deliver (the `brand_members` row is still created correctly).
 - **RLS was off almost everywhere before `007_teams_and_rls.sql`** — if you forked this project earlier and skipped that migration, any authenticated client could read/write any brand's data. Run it.

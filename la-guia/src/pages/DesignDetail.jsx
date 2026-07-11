@@ -87,6 +87,13 @@ export default function DesignDetail() {
     setTab('canvas');
   };
 
+  // Non-destructive counterpart — adds an AI Studio "addition" result as its
+  // own new layer instead of replacing everything already on the canvas.
+  const addLayerToCanvas = (url) => {
+    photopeaRef.current?.addLayer(url);
+    setTab('canvas');
+  };
+
   const svgMarkup = useMemo(() => {
     if (!design || design.baseType === 'upload') return null;
     if (design.baseType === 'ai-silhouette' && design.aiPaths?.paths?.length) {
@@ -376,6 +383,7 @@ export default function DesignDetail() {
             productId={id}
             onCapture={captureCanvasBase64}
             onApplyToCanvas={applyResultToCanvas}
+            onAddLayer={addLayerToCanvas}
             canUseAI={canUseAI}
             aiRemaining={aiRemaining}
             logUsage={logUsage}

@@ -73,6 +73,17 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
       if (!win) return;
       win.postMessage(`app.open("${dataUrl}")`, '*');
     },
+    // Non-destructive counterpart to openImage: Photopea's own scripting API
+    // inserts the given image as a new Smart Object layer on top of the
+    // current document (rather than replacing it) when the third argument
+    // to app.open is true — used for AI Studio "additions" (a generated
+    // logo/graphic) so the founder's existing artwork is never overwritten;
+    // the new element lands as its own movable, deletable layer.
+    addLayer: (dataUrl) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(`app.open("${dataUrl}", "", true);`, '*');
+    },
   }));
 
   const handleLoad = async () => {

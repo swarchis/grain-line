@@ -1,28 +1,47 @@
 import React, { useRef, useState } from 'react';
-import { blobToBase64, base64ToDataUrl, base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
+import { base64ToDataUrl, base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
 
-const TOOLS = [
+// "Transform" tools edit the founder's actual existing design (Gemini's
+// image model, which can take a reference image) — the result replaces the
+// canvas outright, since changing a garment's color/fabric/angle IS a
+// whole-image change, there's no meaningful "layer" for that.
+const TRANSFORM_TOOLS = [
   { mode: 'sketch-to-design', label: 'Sketch to Design', icon: 'ph-magic-wand', desc: 'Render the current sketch as a polished design.', promptPlaceholder: 'Style direction (e.g. "matte black nylon, oversized fit")' },
   { mode: 'ai-edit', label: 'AI Edit', icon: 'ph-pencil-simple', desc: 'Describe any change in plain English.', promptPlaceholder: 'e.g. "make the sleeves longer"', promptRequired: true },
   { mode: 'bg-remove', label: 'Background Remover', icon: 'ph-image', desc: 'Strip the background to plain white.' },
   { mode: 'recolor', label: 'Recolor', icon: 'ph-palette', desc: 'Change the garment color, keep everything else.', promptPlaceholder: 'Target color (e.g. "sage green")', promptRequired: true },
   { mode: 'fabric-swap', label: 'Fabric Swap', icon: 'ph-scissors', desc: 'Swap the fabric while keeping the silhouette.', promptPlaceholder: 'Target fabric (e.g. "ribbed cotton knit")', promptRequired: true },
-  { mode: 'pattern', label: 'Pattern Generator', icon: 'ph-squares-four', desc: 'Generate a standalone tileable pattern swatch.', promptPlaceholder: 'e.g. "small floral print, pastel palette"', promptRequired: true, noImageNeeded: true },
-  { mode: 'logo-placement', label: 'Logo Placement', icon: 'ph-stamp', desc: 'Composite an uploaded logo onto the design.', promptPlaceholder: 'Placement (e.g. "left chest")', needsLogoUpload: true },
   { mode: 'mockup', label: 'Mockup Generator', icon: 'ph-camera', desc: 'Turn the design into a product photo mockup.', promptPlaceholder: 'Style (e.g. "on a model, studio lighting")' },
   { mode: 'flat-sketch', label: 'Flat Sketch', icon: 'ph-ruler', desc: 'Clean technical line-art, tech-pack style.' },
   { mode: 'view', label: 'Generate a View', icon: 'ph-arrows-clockwise', desc: 'Generate another angle of this exact garment.', promptPlaceholder: 'Which view (e.g. "back", "side")', promptRequired: true },
 ];
 
-function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
+// "Addition" tools generate a brand new, isolated element with nothing to
+// composite against (Stable Diffusion via Pixazo — free/fast SD XL
+// Lightning, since these are meant to be regenerated a few times before one
+// lands). Nothing here ever touches the founder's existing artwork — the
+// result is either added as its own new layer (Photopea) or downloaded as a
+// transparent PNG to drop into Photoshop/Illustrator/whatever they actually
+// use, never baked into a flattened replacement of the canvas.
+const ADDITION_TOOLS = [
+  { mode: 'add-element', label: 'Add Element', icon: 'ph-stamp', desc: 'Generate a logo/graphic and add it as its own layer.', promptPlaceholder: 'e.g. "minimalist mountain line-art logo"', promptRequired: true },
+  { mode: 'pattern', label: 'Pattern Generator', icon: 'ph-squares-four', desc: 'Generate a standalone tileable pattern swatch.', promptPlaceholder: 'e.g. "small floral print, pastel palette"', promptRequired: true },
+];
+
+function downloadPng(base64, mimeType, filename) {
+  const a = document.createElement('a');
+  a.href = base64ToDataUrl(base64, mimeType);
+  a.download = filename;
+  a.click();
+}
+
+function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [logoFile, setLogoFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null); // { base64, mimeType }
   const [saving, setSaving] = useState(false);
-  const logoInputRef = useRef(null);
 
   const promptMissing = tool.promptRequired && !prompt.trim();
 
@@ -33,18 +52,14 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
     setError(null);
     setResult(null);
     try {
-      const images = [];
-      if (!tool.noImageNeeded) {
-        images.push(await onCapture());
-      }
-      if (tool.needsLogoUpload) {
-        if (!logoFile) throw new Error('Upload a logo image first.');
-        images.push(await blobToBase64(logoFile));
-      }
-      const res = await fetch('http://localhost:3001/api/design/ai-image', {
+      const endpoint = kind === 'addition' ? '/api/design/generate-element' : '/api/design/ai-image';
+      const body = kind === 'addition'
+        ? { mode: tool.mode, prompt: prompt.trim() || null }
+        : { mode: tool.mode, prompt: prompt.trim() || null, images: [await onCapture()] };
+      const res = await fetch(`http://localhost:3001${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: tool.mode, prompt: prompt.trim() || null, images }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -55,11 +70,6 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
     } finally {
       setLoading(false);
     }
-  };
-
-  const applyToCanvas = () => {
-    if (!result) return;
-    onApplyToCanvas(base64ToDataUrl(result.base64, result.mimeType));
   };
 
   const saveAsVersion = async () => {
@@ -85,7 +95,7 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
     <div className="card-raised" style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
         <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <i className={`ph ${tool.icon}`} style={{ fontSize: 15, color: 'var(--c-design)' }} />
+          <i className={`ph ${tool.icon}`} style={{ fontSize: 15, color: kind === 'addition' ? 'var(--c-vendors)' : 'var(--c-design)' }} />
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{tool.label}</div>
@@ -96,16 +106,8 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
 
       {open && (
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {(tool.promptPlaceholder) && (
+          {tool.promptPlaceholder && (
             <input className="form-input" placeholder={tool.promptPlaceholder} value={prompt} onChange={e => setPrompt(e.target.value)} />
-          )}
-          {tool.needsLogoUpload && (
-            <div>
-              <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setLogoFile(e.target.files?.[0] || null)} />
-              <button className="btn btn-sm" onClick={() => logoInputRef.current?.click()}>
-                <i className="ph ph-upload-simple" /> {logoFile ? logoFile.name : 'Upload logo'}
-              </button>
-            </div>
           )}
 
           {!canUseAI ? (
@@ -122,9 +124,19 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
 
           {result && (
             <div>
-              <img src={base64ToDataUrl(result.base64, result.mimeType)} alt="AI result" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-2)', marginBottom: 8 }} />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-sm btn-primary" onClick={applyToCanvas}><i className="ph ph-arrow-square-in" /> Apply to canvas</button>
+              <img
+                src={base64ToDataUrl(result.base64, result.mimeType)} alt="AI result"
+                style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-2)', marginBottom: 8, background: kind === 'addition' ? 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 14px 14px' : undefined }}
+              />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {kind === 'addition' ? (
+                  <>
+                    <button className="btn btn-sm btn-primary" onClick={() => onAddLayer(base64ToDataUrl(result.base64, result.mimeType))}><i className="ph ph-stack-plus" /> Add as layer</button>
+                    <button className="btn btn-sm" onClick={() => downloadPng(result.base64, result.mimeType, `${tool.mode}.png`)}><i className="ph ph-download-simple" /> Download PNG</button>
+                  </>
+                ) : (
+                  <button className="btn btn-sm btn-primary" onClick={() => onApplyToCanvas(base64ToDataUrl(result.base64, result.mimeType))}><i className="ph ph-arrow-square-in" /> Apply to canvas</button>
+                )}
                 <button className="btn btn-sm" onClick={saveAsVersion} disabled={saving}>{saving ? 'Saving…' : <><i className="ph ph-clock-counter-clockwise" /> Save as version</>}</button>
               </div>
             </div>
@@ -135,26 +147,22 @@ function ToolCard({ tool, productId, onCapture, onApplyToCanvas, canUseAI, aiRem
   );
 }
 
-export default function AIStudioTab({ productId, onCapture, onApplyToCanvas, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
+export default function AIStudioTab({ productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
+  const shared = { productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved };
   return (
     <div style={{ maxWidth: 1080 }}>
       <div className="form-hint" style={{ marginBottom: 16 }}>
-        <i className="ph ph-info" style={{ marginRight: 4 }} /> Every tool here reads the current canvas, so capture your sketch first. Results can be applied straight to the canvas or saved as a version without overwriting your current work.
+        <i className="ph ph-info" style={{ marginRight: 4 }} /> Transform tools edit the current canvas — capture your sketch first, then apply or discard the result. Addition tools generate a brand-new element that never touches your existing artwork — add it as its own layer, or download it to use in Photoshop/Illustrator.
       </div>
+
+      <div className="section-label" style={{ marginBottom: 10 }}>Transform your design</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 22 }}>
+        {TRANSFORM_TOOLS.map(tool => <ToolCard key={tool.mode} tool={tool} kind="transform" {...shared} />)}
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 10 }}>Add a new element</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        {TOOLS.map(tool => (
-          <ToolCard
-            key={tool.mode}
-            tool={tool}
-            productId={productId}
-            onCapture={onCapture}
-            onApplyToCanvas={onApplyToCanvas}
-            canUseAI={canUseAI}
-            aiRemaining={aiRemaining}
-            logUsage={logUsage}
-            onVersionSaved={onVersionSaved}
-          />
-        ))}
+        {ADDITION_TOOLS.map(tool => <ToolCard key={tool.mode} tool={tool} kind="addition" {...shared} />)}
       </div>
     </div>
   );

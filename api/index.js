@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { Resend } = require('resend');
+const sharp = require('sharp');
 
 // Explicit path, not the bare `dotenv.config()` default
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -107,6 +108,57 @@ async function callGeminiImage(prompt, imageInputsBase64 = []) {
   }
   const inline = imagePart.inline_data || imagePart.inlineData;
   return { base64: inline.data, mimeType: inline.mime_type || inline.mimeType || 'image/png' };
+}
+
+// Pixazo's gateway to Stable Diffusion — used only for text-to-image
+// generation of a standalone new element (a logo, an icon, a pattern swatch)
+// with nothing to composite against, which is all its SD models can do
+// (no image-input parameter exists on SD 3.5/3.0/XL/XL-Lightning — only
+// their separate mask-based Inpainting endpoint takes an image, and that's
+// not what "generate a new isolated graphic" needs). Defaults to the free,
+// few-step SD XL Lightning model since these tools are meant to be
+// regenerated a few times before landing on the right result — no reason to
+// spend the paid SD 3.5 tier on something this iterative.
+const PIXAZO_SDXL_LIGHTNING_URL = 'https://gateway.pixazo.ai/sdxl_lightning/getImage/v1/getSDXLImage';
+
+async function callPixazoElement(prompt) {
+  if (!process.env.PIXAZO_API_KEY) {
+    throw new Error('PIXAZO_API_KEY is not set in api/.env — get one at api-console.pixazo.ai.');
+  }
+  const fullPrompt = `${prompt}. Flat graphic/icon style, centered, isolated on a plain solid white background, no shadow, no scene, no mockup, no photo — just the graphic itself.`;
+
+  const response = await fetch(PIXAZO_SDXL_LIGHTNING_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': process.env.PIXAZO_API_KEY },
+    body: JSON.stringify({
+      prompt: fullPrompt,
+      negativePrompt: 'photo, photorealistic, background scene, shadow, gradient background, texture background, watermark, text, frame, border',
+      height: 1024,
+      width: 1024,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    console.error("❌ Pixazo API Error:", JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || data.message || `Pixazo Error: ${response.status}`);
+  }
+  const imageUrl = data.imageUrl || data.output || data.url;
+  if (!imageUrl) throw new Error('Pixazo did not return an image URL.');
+
+  // Fetch the generated PNG/WebP and punch the near-white background out to
+  // real alpha transparency — SD has no native transparency output, so a
+  // solid white background (per the prompt above) plus a simple threshold
+  // is the practical way to get something that behaves like a layer instead
+  // of a flat rectangle when it's added to the canvas.
+  const imgRes = await fetch(imageUrl);
+  const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+  const { data: pixels, info } = await sharp(imgBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i] > 240 && pixels[i + 1] > 240 && pixels[i + 2] > 240) pixels[i + 3] = 0;
+  }
+  const pngBuffer = await sharp(pixels, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  return { base64: pngBuffer.toString('base64'), mimeType: 'image/png' };
 }
 
 // ---------------------------------------------------------
@@ -701,26 +753,24 @@ Return 2 to 4 suggestions, ordered most important first. Use "warning" only for 
 // ---------------------------------------------------------
 // 6. AI DESIGN STUDIO — image generation & editing
 // ---------------------------------------------------------
-// One endpoint, many "modes" — every image tool (sketch-to-design, edit,
-// background removal, recoloring, fabric swap, pattern generation, logo
-// placement, mockup generation, flat sketch, alternate views, variants) is
-// fundamentally the same call to the image model with a different prompt
-// template and different reference images, so the prompt engineering lives
-// here in one place rather than duplicated per tool.
+// One endpoint, many "modes" — every tool here needs to see and faithfully
+// edit the founder's *actual* existing design (recolor, fabric-swap, etc.),
+// which is why these stay on Gemini's image model: it's the one that takes
+// a reference image and returns a genuinely edited version of it. Pixazo's
+// Stable Diffusion endpoints below are text-to-image only, so they handle
+// the opposite kind of tool — generating a brand new, isolated element to
+// *add* to the design rather than editing the design itself. See "7." below.
 const IMAGE_MODE_PROMPTS = {
   'sketch-to-design': (p) => `You are a fashion technical illustrator. Take this rough sketch and render it as a clean, professional garment design image — polished linework, realistic fabric drape and shading, on a plain white background, single garment only, no model.${p ? ` Style direction: ${p}.` : ''} Keep the same silhouette and proportions as the sketch — you're rendering it, not redesigning it.`,
   'ai-edit': (p) => `You are editing this garment design image. Apply exactly this change, keeping everything else about the garment identical: ${p || 'make a small refinement'}. Keep the same camera angle, background, and overall composition.`,
   'bg-remove': () => `Remove the background from this image completely, replacing it with a plain solid white background. Keep the garment itself pixel-identical — do not alter its color, shape, or details.`,
   'recolor': (p) => `Recolor the garment in this image to ${p || 'a different color'}, preserving all fabric texture, shading, folds, and construction details exactly as they are — only the color changes.`,
   'fabric-swap': (p) => `Change the fabric of the garment in this image to ${p || 'a different fabric'}, updating texture and drape to realistically reflect that fabric while keeping the exact same garment silhouette, cut, and design details.`,
-  'pattern': (p) => `Generate a seamless, tileable textile pattern image: ${p || 'an abstract pattern'}. The image should be a flat, repeating pattern swatch suitable for printing on fabric — no garment, no background scene, just the pattern itself filling the frame.`,
-  'logo-placement': (p) => `The first image is a garment design. The second image is a logo. Composite the logo onto the garment${p ? ` at this placement: ${p}` : ' in a natural, appropriately-sized placement (e.g. left chest for a top)'}, matching the garment's perspective, lighting, and fabric texture so it looks printed/embroidered on, not pasted flat.`,
   'mockup': (p) => `Create a professional product photography mockup of this garment design: ${p || 'worn by a model in a studio setting with clean, even lighting'}. Keep the garment's design, color, and details exactly as shown in the reference image.`,
   'flat-sketch': () => `Convert this garment image into a clean technical flat sketch — precise black linework on a white background, no shading or color, front view, the kind used in a professional tech pack.`,
   'view': (p) => `Generate the ${p || 'back'} view of this exact same garment — same color, fabric, and design details as the reference image, just shown from a different angle.`,
   'variant': (p) => `Create a design variation of this garment: ${p || 'a stylistic variation'}. Keep it recognizably related to the original but with this specific change applied.`,
 };
-const MODES_WITHOUT_IMAGE = ['pattern']; // the only mode that can run as pure text-to-image
 
 app.post('/api/design/ai-image', async (req, res) => {
   console.log("📥 Received AI image request...");
@@ -728,12 +778,42 @@ app.post('/api/design/ai-image', async (req, res) => {
     const { mode, prompt, images } = req.body;
     const builder = IMAGE_MODE_PROMPTS[mode];
     if (!builder) return res.status(400).json({ ok: false, error: 'Unknown AI image mode: ' + mode });
-    if ((!images || images.length === 0) && !MODES_WITHOUT_IMAGE.includes(mode)) {
+    if (!images || images.length === 0) {
       return res.status(400).json({ ok: false, error: 'No reference image provided' });
     }
     const fullPrompt = builder(prompt);
     const result = await callGeminiImage(fullPrompt, images || []);
     console.log("✅ AI image successful:", mode);
+    res.json({ ok: true, imageBase64: result.base64, mimeType: result.mimeType });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 7. AI DESIGN STUDIO — new element generation (Stable Diffusion / Pixazo)
+// ---------------------------------------------------------
+// Generates a standalone graphic (a logo/icon, or a pattern swatch) with no
+// input image — this is what feeds the frontend's "add as a new layer"
+// action (PhotopeaEditor.addLayer) instead of the Gemini modes above, which
+// replace the whole canvas. Kept as a separate endpoint/provider rather than
+// folded into /api/design/ai-image since it's a genuinely different
+// capability (isolated-asset generation vs. whole-image editing), not just
+// another prompt template.
+const ELEMENT_MODE_PROMPTS = {
+  'add-element': (p) => p || 'a simple minimalist icon',
+  'pattern': (p) => `a seamless, tileable, repeating textile pattern: ${p || 'an abstract pattern'}`,
+};
+
+app.post('/api/design/generate-element', async (req, res) => {
+  console.log("📥 Received element generation request...");
+  try {
+    const { mode, prompt } = req.body;
+    const builder = ELEMENT_MODE_PROMPTS[mode];
+    if (!builder) return res.status(400).json({ ok: false, error: 'Unknown element mode: ' + mode });
+    const result = await callPixazoElement(builder(prompt));
+    console.log("✅ Element generation successful:", mode);
     res.json({ ok: true, imageBase64: result.base64, mimeType: result.mimeType });
   } catch (error) {
     console.error('❌ Endpoint Error:', error.message);
