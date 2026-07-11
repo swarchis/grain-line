@@ -4,12 +4,14 @@ import { supabase } from '../lib/supabase.js';
 import { readinessColor, riskTagClass, swatchGradient } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 export default function TechPackList() {
   const navigate = useNavigate();
-  const { products } = useProducts();
+  const { products, deleteProduct } = useProducts();
   const [techPacks, setTechPacks] = useState({});
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Only show products that have moved past the pure design stage
   const items = products.filter(p => ['techpack', 'sourcing', 'sampling', 'production', 'launched'].includes(p.stage));
@@ -53,6 +55,14 @@ export default function TechPackList() {
               return (
                 <div key={p.id} className="card-raised card-hover" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate(`/tech-packs/${p.id}`)}>
                   <div className="corner-fold" style={{ '--fold-color': 'var(--c-techpack)' }} />
+                  <button
+                    className="piece-move-btn"
+                    title="Delete design"
+                    onClick={e => { e.stopPropagation(); setDeleteTarget(p); }}
+                    style={{ color: 'var(--red)' }}
+                  >
+                    <i className="ph ph-trash" />
+                  </button>
                   <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
                     <div className="swatch" style={{ background: swatchGradient(p.id) }} />
                     <div style={{ minWidth: 0 }}>
@@ -78,6 +88,15 @@ export default function TechPackList() {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        itemLabel="design"
+        itemName={deleteTarget?.name || ''}
+        warning="Its tech pack, measurements, and BOM will be deleted with it."
+        onConfirm={async () => { await deleteProduct(deleteTarget.id); }}
+      />
     </>
   );
 }

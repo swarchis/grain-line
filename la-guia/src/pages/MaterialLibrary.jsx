@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { trustTagClass } from '../lib/format.js';
 import { PhotoPanel } from '../components/decor.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 import { useMaterials } from '../context/MaterialsContext.jsx';
 
 const SWATCH_TONES = ['clay', 'gold', 'sage', 'ink'];
 
 export default function MaterialLibrary() {
   const navigate = useNavigate();
-  const { materials, loading } = useMaterials();
+  const { materials, loading, deleteMaterial } = useMaterials();
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const filtered = materials.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -50,6 +52,14 @@ export default function MaterialLibrary() {
             {filtered.map((m, mi) => (
               <div key={m.id} className="card-raised card-hover" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate(`/materials/${m.id}`)}>
                 <div className="corner-fold" style={{ '--fold-color': 'var(--c-materials)' }} />
+                <button
+                  className="piece-move-btn"
+                  title="Delete material"
+                  onClick={e => { e.stopPropagation(); setDeleteTarget(m); }}
+                  style={{ color: 'var(--red)' }}
+                >
+                  <i className="ph ph-trash" />
+                </button>
                 <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
                   <PhotoPanel variant="weave" tone={SWATCH_TONES[mi % SWATCH_TONES.length]} aspect="1 / 1" style={{ width: 44, flexShrink: 0, borderRadius: 'var(--r-sm)' }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
@@ -66,6 +76,15 @@ export default function MaterialLibrary() {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        itemLabel="material"
+        itemName={deleteTarget?.name || ''}
+        warning="Any tech pack BOM lines referencing it by name will stop matching it, but won't be deleted themselves."
+        onConfirm={async () => { await deleteMaterial(deleteTarget.id); }}
+      />
     </>
   );
 }

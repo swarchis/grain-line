@@ -4,15 +4,17 @@ import { currency, swatchGradient } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { PhotoPanel } from '../components/decor.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 const COVER_TONES = ['gold', 'sage', 'clay', 'ink'];
 
 export default function Collections() {
   const navigate = useNavigate();
-  const { products, collections, createCollection } = useProducts();
+  const { products, collections, createCollection, deleteCollection } = useProducts();
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ name: '', launchWindow: '' });
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -86,6 +88,14 @@ export default function Collections() {
                 <div className="card-raised card-hover" key={c.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/collections/${c.id}`)}>
                   <PhotoPanel variant="weave" tone={COVER_TONES[ci % COVER_TONES.length]} aspect="16 / 6" label={c.name} icon="ph-stack" style={{ borderRadius: 'var(--r) var(--r) 0 0', border: 'none', borderBottom: '1px solid var(--border)' }} />
                   <div className="corner-fold" style={{ '--fold-color': 'var(--c-organization)' }} />
+                  <button
+                    className="piece-move-btn"
+                    title="Delete collection"
+                    onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}
+                    style={{ color: 'var(--red)' }}
+                  >
+                    <i className="ph ph-trash" />
+                  </button>
                   <div className="card-header">
                     <span className="card-title">{c.name}</span>
                     {c.timeline_conflict && <span className="tag tag-amber">Timeline conflict</span>}
@@ -115,6 +125,15 @@ export default function Collections() {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        itemLabel="collection"
+        itemName={deleteTarget?.name || ''}
+        warning="Products in it won't be deleted — they'll just be un-grouped from this collection."
+        onConfirm={async () => { await deleteCollection(deleteTarget.id); }}
+      />
     </>
   );
 }

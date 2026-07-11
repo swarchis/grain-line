@@ -14,6 +14,7 @@ export default function BillingTab() {
   const [checkoutLoading, setCheckoutLoading] = useState(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [devSwitching, setDevSwitching] = useState(null);
 
   const currentTier = activeBrand?.plan_tier || 'free';
   const currentPlan = getPlan(currentTier);
@@ -88,6 +89,21 @@ export default function BillingTab() {
     } catch (err) {
       setBanner({ type: 'error', text: err.message });
       setCheckoutLoading(null);
+    }
+  };
+
+  // Local-testing-only shortcut to try every plan's gating without paying
+  // Stripe for it — writes plan_tier directly, bypassing Checkout entirely.
+  // Never rendered in a production build (see import.meta.env.DEV guard below).
+  const devSetPlan = async (planId) => {
+    setDevSwitching(planId);
+    try {
+      await updateBrand({ plan_tier: planId });
+      setBanner({ type: 'info', text: `Dev override: plan set to ${getPlan(planId).name} (no Stripe involved).` });
+    } catch (err) {
+      setBanner({ type: 'error', text: err.message });
+    } finally {
+      setDevSwitching(null);
     }
   };
 
@@ -195,6 +211,31 @@ export default function BillingTab() {
       <div className="form-hint">
         <i className="ph ph-info" style={{ marginRight: 4 }} /> Some Premium features are marked "Coming soon" — they're on the roadmap but not built into the app yet.
       </div>
+
+      {import.meta.env.DEV && (
+        <div className="card-raised" style={{ marginTop: 22, padding: 18, border: '1px dashed var(--amber-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+            <i className="ph ph-flask" style={{ color: 'var(--amber)' }} />
+            <span className="card-title">Developer tools</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 12 }}>
+            Local dev build only — jumps this brand straight to a plan tier so you can test its gating without going through Stripe. Never shown in production.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {PLANS.map(p => (
+              <button
+                key={p.id}
+                className="btn btn-sm"
+                disabled={devSwitching === p.id || currentTier === p.id}
+                onClick={() => devSetPlan(p.id)}
+                style={{ opacity: currentTier === p.id ? 0.5 : 1 }}
+              >
+                {devSwitching === p.id ? 'Setting…' : `Force ${p.name}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

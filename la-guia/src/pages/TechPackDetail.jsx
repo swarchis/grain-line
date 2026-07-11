@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase.js';
 import FlowStepper from '../components/FlowStepper.jsx';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: 'ph-squares-four' },
@@ -36,6 +37,8 @@ export default function TechPackDetail() {
   
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [hasTechPack, setHasTechPack] = useState(false);
 
   useEffect(() => {
     async function loadTechPack() {
@@ -48,6 +51,7 @@ export default function TechPackDetail() {
           .single();
           
         if (data) {
+          setHasTechPack(true);
           if (data.image_url) setImageUrl(data.image_url);
           if (data.bom && data.bom.length > 0) setBom(data.bom);
           if (data.measurements && data.measurements.length > 0) setMeasurements(data.measurements);
@@ -143,6 +147,19 @@ export default function TechPackDetail() {
 
   const totalBomCost = bom.reduce((sum, item) => sum + ((parseFloat(item.qtyPerUnit) || 0) * (parseFloat(item.unitCost) || 0)), 0);
 
+  // Clears just the tech_packs row — the product/design itself stays put,
+  // it just goes back to looking "not started" on Tech Pack List.
+  const handleDeleteTechPack = async () => {
+    const { error } = await supabase.from('tech_packs').delete().eq('product_id', id);
+    if (error) throw error;
+    setHasTechPack(false);
+    setImageUrl(null);
+    setBom([{ id: 'bom-init', material: '', supplier: '', qtyPerUnit: '', unitCost: '' }]);
+    setMeasurements([{ id: 'meas-init', size: 'M', chest: '', length: '', sleeve: '' }]);
+    setMaterialWarnings([]);
+    setReadinessChecklist(DEFAULT_CHECKLIST);
+  };
+
   // Trigger browser print dialog for PDF export
   const handleExportPDF = () => {
     window.print();
@@ -162,6 +179,11 @@ export default function TechPackDetail() {
           </div>
           <div className="topbar-right">
             <span className={riskTagClass(product.risk)} style={{ marginRight: 8 }}>{product.risk}</span>
+            {hasTechPack && (
+              <button className="canvas-icon-btn" onClick={() => setConfirmingDelete(true)} title="Delete tech pack data" style={{ color: 'var(--red)' }}>
+                <i className="ph ph-trash" />
+              </button>
+            )}
             <button className="btn" onClick={handleExportPDF} disabled={loadingData}>
               <i className="ph ph-file-pdf" /> Export PDF
             </button>
@@ -170,6 +192,15 @@ export default function TechPackDetail() {
             </button>
           </div>
         </div>
+
+        <ConfirmDeleteModal
+          open={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          itemLabel="tech pack"
+          itemName={product.name}
+          warning="The BOM, measurements, and sampling checklist will be cleared — the design itself stays."
+          onConfirm={handleDeleteTechPack}
+        />
 
         <div style={{ padding: '14px 30px 0' }}>
           <FlowStepper productId={product.id} current="techpack" />

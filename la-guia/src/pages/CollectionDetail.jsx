@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { currency, riskTagClass, readinessColor, stageLink, swatchGradient } from '../lib/format.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 import { PhotoPanel } from '../components/decor.jsx';
 
 const COVER_TONES = { 'fall-capsule-02': 'gold', 'core-basics': 'sage', 'spring-preview': 'clay', 'resort-capsule': 'ink' };
@@ -10,8 +11,9 @@ const COVER_TONES = { 'fall-capsule-02': 'gold', 'core-basics': 'sage', 'spring-
 export default function CollectionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, collections } = useProducts();
-  
+  const { products, collections, deleteCollection } = useProducts();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   const collection = collections.find(c => c.id === id);
   const members = products.filter(p => p.collection_id === id);
 
@@ -34,8 +36,20 @@ export default function CollectionDetail() {
         </div>
         <div className="topbar-right">
           {collection.timeline_conflict && <span className="tag tag-amber">Timeline conflict</span>}
+          <button className="canvas-icon-btn" onClick={() => setConfirmingDelete(true)} title="Delete collection" style={{ color: 'var(--red)' }}>
+            <i className="ph ph-trash" />
+          </button>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        itemLabel="collection"
+        itemName={collection.name}
+        warning="Products in it won't be deleted — they'll just be un-grouped from this collection."
+        onConfirm={async () => { await deleteCollection(id); navigate('/collections'); }}
+      />
 
       <div className="content">
         <PhotoPanel variant="weave" tone={COVER_TONES[collection.id] || 'gold'} aspect="21 / 6" label={collection.name} icon="ph-stack" style={{ marginBottom: 24 }} />

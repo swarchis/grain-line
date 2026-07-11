@@ -4,14 +4,16 @@ import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
 import { getPlan } from '../data/plans.js';
 import GarmentSilhouette, { CustomSilhouette, GARMENT_TYPES } from '../components/GarmentSilhouette.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 const STATUS_COLOR = { Sketching: 'var(--ink-3)', Refining: 'var(--c-design)', Ready: 'var(--green)' };
 
 export default function Design() {
   const navigate = useNavigate();
-  const { products, designs, createDesign, activeBrand } = useProducts();
+  const { products, designs, createDesign, deleteProduct, activeBrand } = useProducts();
   const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
   const [showNew, setShowNew] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [customType, setCustomType] = useState('');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -177,6 +179,14 @@ export default function Design() {
             return (
               <div key={p.id} className="card-raised card-hover" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate(`/design/${p.id}`)}>
                 <div className="corner-fold" style={{ '--fold-color': 'var(--c-design)' }} />
+                <button
+                  className="piece-move-btn"
+                  title="Delete design"
+                  onClick={e => { e.stopPropagation(); setDeleteTarget(p); }}
+                  style={{ color: 'var(--red)' }}
+                >
+                  <i className="ph ph-trash" />
+                </button>
                 <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
                   <div style={{ width: 44, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-3)', borderRadius: 8, color: 'var(--ink-3)', flexShrink: 0 }}>
                     {d?.baseType === 'ai-silhouette' && d?.aiPaths?.paths?.length
@@ -196,6 +206,15 @@ export default function Design() {
           })}
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        itemLabel="design"
+        itemName={deleteTarget?.name || ''}
+        warning="Its tech pack, measurements, and BOM will be deleted with it."
+        onConfirm={async () => { await deleteProduct(deleteTarget.id); }}
+      />
     </>
   );
 }

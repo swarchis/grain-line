@@ -3,16 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
 import { trustTagClass } from '../lib/format.js';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 import { PhotoPanel } from '../components/decor.jsx';
+import { useMaterials } from '../context/MaterialsContext.jsx';
 
 const TONE_BY_RISK = { green: 'sage', amber: 'gold', red: 'clay' };
 
 export default function MaterialDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { deleteMaterial } = useMaterials();
   const [material, setMaterial] = useState(null);
   const [usedInProducts, setUsedInProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -65,8 +69,22 @@ export default function MaterialDetail() {
           <span className={trustTagClass(material.risk_level)}>
             {material.risk_level === 'green' ? 'Low risk' : material.risk_level === 'red' ? 'High risk' : 'Watch'}
           </span>
+          <button className="canvas-icon-btn" onClick={() => setConfirmingDelete(true)} title="Delete material" style={{ color: 'var(--red)' }}>
+            <i className="ph ph-trash" />
+          </button>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        itemLabel="material"
+        itemName={material.name}
+        warning={usedInProducts.length > 0
+          ? `It's referenced in ${usedInProducts.length} tech pack${usedInProducts.length > 1 ? 's' : ''} by name — those BOM lines will stop matching it, but won't be deleted.`
+          : undefined}
+        onConfirm={async () => { await deleteMaterial(id); navigate('/materials'); }}
+      />
 
       <div className="content">
         <PhotoPanel variant="weave" tone={TONE_BY_RISK[material.risk_level] || 'gold'} aspect="21 / 5" label={material.name} icon="ph-flask" style={{ marginBottom: 20 }} />

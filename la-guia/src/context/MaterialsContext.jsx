@@ -20,8 +20,14 @@ export function MaterialsProvider({ children }) {
     load();
   }, []);
 
+  const deleteMaterial = async (id) => {
+    const { error } = await supabase.from('materials').delete().eq('id', id);
+    if (error) throw error;
+    setMaterials(prev => prev.filter(m => m.id !== id));
+  };
+
   return (
-    <MaterialsContext.Provider value={{ materials, loading }}>
+    <MaterialsContext.Provider value={{ materials, loading, deleteMaterial }}>
       {children}
     </MaterialsContext.Provider>
   );

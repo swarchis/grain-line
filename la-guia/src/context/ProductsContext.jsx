@@ -171,6 +171,30 @@ export function ProductsProvider({ children }) {
     return updateProduct(id, { is_favorite: !current.is_favorite });
   };
 
+  // Deletes the product row outright — designs and tech_packs cascade via
+  // their FK (ON DELETE CASCADE), so this is the one call that removes a
+  // piece entirely, not just its tech pack or design data.
+  const deleteProduct = async (id) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) throw error;
+    setProducts(prev => prev.filter(p => p.id !== id));
+    setDesigns(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const deleteCollection = async (id) => {
+    const { error } = await supabase.from('collections').delete().eq('id', id);
+    if (error) throw error;
+    setCollections(prev => prev.filter(c => c.id !== id));
+    // Matches the DB's ON DELETE SET NULL on products.collection_id so local
+    // state doesn't keep pointing products at a collection that's gone.
+    setProducts(prev => prev.map(p => (p.collection_id === id ? { ...p, collection_id: null } : p)));
+  };
+
   const createCollection = async ({ name, launchWindow }) => {
     if (!activeBrand) throw new Error("No active brand");
     const { data, error } = await supabase
@@ -253,8 +277,8 @@ export function ProductsProvider({ children }) {
 
   return (
     <ProductsContext.Provider value={{
-      products, collections, moveProduct, updateProduct, toggleFavorite, designs, createDesign, createCollection,
-      updateBrand, getUploadedFile, activeBrand, brands, switchBrand, createBrand,
+      products, collections, moveProduct, updateProduct, deleteProduct, toggleFavorite, designs, createDesign, createCollection,
+      deleteCollection, updateBrand, getUploadedFile, activeBrand, brands, switchBrand, createBrand,
       loading: loading || loadingBrands,
     }}>
       {children}

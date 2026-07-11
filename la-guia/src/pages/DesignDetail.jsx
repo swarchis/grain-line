@@ -8,6 +8,7 @@ import GarmentSilhouette, { CustomSilhouette } from '../components/GarmentSilhou
 import PhotopeaEditor from '../components/PhotopeaEditor.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const CANVAS_STATUS = {
@@ -19,9 +20,10 @@ const CANVAS_STATUS = {
 export default function DesignDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, designs, getUploadedFile } = useProducts();
+  const { products, designs, getUploadedFile, deleteProduct } = useProducts();
   const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [generatingTP, setGeneratingTP] = useState(false);
   const [localAnalysis, setLocalAnalysis] = useState(null);
@@ -201,11 +203,23 @@ export default function DesignDetail() {
           <div className="page-sub">{product.category}</div>
         </div>
         <div className="topbar-right">
+          <button className="canvas-icon-btn" onClick={() => setConfirmingDelete(true)} title="Delete design" style={{ color: 'var(--red)' }}>
+            <i className="ph ph-trash" />
+          </button>
           <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI tech pack generation' : undefined}>
             {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade for AI Tech Pack</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
           </button>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        itemLabel="design"
+        itemName={product.name}
+        warning="Its tech pack, measurements, and BOM will be deleted with it."
+        onConfirm={async () => { await deleteProduct(id); navigate('/design'); }}
+      />
 
       <div style={{ padding: '14px 30px 0' }}>
         <FlowStepper productId={id} current="design" />
