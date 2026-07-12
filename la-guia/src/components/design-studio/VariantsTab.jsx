@@ -13,7 +13,7 @@ export default function VariantsTab({ productId, variants, onChange, onCapture, 
     setError(null);
     try {
       const image = await onCapture();
-      const res = await fetch('http://localhost:3001/api/design/ai-image', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/ai-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'variant', prompt: prompt.trim(), images: [image] }),

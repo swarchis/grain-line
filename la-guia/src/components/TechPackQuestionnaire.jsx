@@ -30,7 +30,7 @@ export default function TechPackQuestionnaire({ open, onClose, category, onCompl
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:3001/api/generate-tech-pack-full', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-tech-pack-full`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, answers }),

@@ -72,7 +72,7 @@ function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, log
     try {
       const body = fromCanvas ? { imageBase64: await onCapture() } : { brief: brief.trim() };
       if (!fromCanvas && !brief.trim()) throw new Error('Describe the product or collection first.');
-      const res = await fetch('http://localhost:3001/api/design/color-palette', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/color-palette`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -133,7 +133,7 @@ function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:3001/api/design/trend-inspiration', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/trend-inspiration`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category }),
       });
       const data = await res.json();

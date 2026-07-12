@@ -210,7 +210,7 @@ export default function VendorDiscovery() {
     setParsing(true);
     setParseError(null);
     try {
-      const res = await fetch('http://localhost:3001/api/parse-vendor', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/parse-vendor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: pasteText }),
@@ -275,7 +275,7 @@ export default function VendorDiscovery() {
     setSearchError(null);
     setResults(null);
     try {
-      const res = await fetch('http://localhost:3001/api/search-vendors', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/search-vendors`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...filters, imageBase64: searchImage?.base64 || null }),

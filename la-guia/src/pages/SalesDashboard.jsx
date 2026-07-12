@@ -79,7 +79,7 @@ export default function SalesDashboard() {
       alert('Please enter your full .myshopify.com domain.');
       return;
     }
-    window.location.href = `http://localhost:3001/api/shopify/auth?shop=${domain}&brandId=${activeBrand?.id}`;
+    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/shopify/auth?shop=${domain}&brandId=${activeBrand?.id}`;
   };
 
   // 2. Fetch from Shopify via Backend Proxy and Save to Supabase
@@ -88,7 +88,7 @@ export default function SalesDashboard() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch('http://localhost:3001/api/shopify/fetch-orders', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/shopify/fetch-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shop: connection.shop_domain, token: connection.access_token })

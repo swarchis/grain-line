@@ -56,7 +56,7 @@ function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLaye
       const body = kind === 'addition'
         ? { mode: tool.mode, prompt: prompt.trim() || null }
         : { mode: tool.mode, prompt: prompt.trim() || null, images: [await onCapture()] };
-      const res = await fetch(`http://localhost:3001${endpoint}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

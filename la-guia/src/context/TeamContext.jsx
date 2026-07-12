@@ -68,7 +68,7 @@ export function TeamProvider({ children }) {
 
     // 2. Dispatch the Email via our Backend
     try {
-      await fetch('http://localhost:3001/api/send-invite', {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/send-invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

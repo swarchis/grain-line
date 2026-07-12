@@ -144,7 +144,7 @@ export default function DesignDetail() {
         reader.readAsDataURL(blob);
       });
           
-      const apiRes = await fetch('http://localhost:3001/api/analyze-design', {
+      const apiRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/analyze-design`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64data })
@@ -212,7 +212,7 @@ export default function DesignDetail() {
         .getPublicUrl(fileName);
       
       // 2. ASK AI TO GENERATE TECH PACK
-      const apiRes = await fetch('http://localhost:3001/api/generate-tech-pack', {
+      const apiRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-tech-pack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64data })

@@ -92,7 +92,7 @@ export default function Design() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      const res = await fetch('http://localhost:3001/api/generate-silhouette', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-silhouette`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ garmentType }),

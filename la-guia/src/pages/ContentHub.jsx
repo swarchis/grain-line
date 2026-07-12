@@ -62,7 +62,7 @@ export default function ContentHub() {
 
   const handleConnect = async (platform) => {
     // If keys are missing, we prompt manually. If you add the keys to .env, this redirects to real OAuth
-    window.location.href = `http://localhost:3001/api/social/auth/${platform}?brandId=${activeBrand?.id}`;
+    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/social/auth/${platform}?brandId=${activeBrand?.id}`;
   };
 
   const handleFileChange = (e) => {

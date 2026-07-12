@@ -179,7 +179,7 @@ export default function VendorDetail() {
     setDraftError(null);
     try {
       const selectedProductObj = products.find(p => p.id === selectedProduct);
-      const res = await fetch('http://localhost:3001/api/draft-vendor-email', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/draft-vendor-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -235,7 +235,7 @@ export default function VendorDetail() {
         .filter(q => q.product_id === fitProduct)
         .map(q => ({ status: q.status, amount: q.amount, preferences: q.preferences }));
 
-      const res = await fetch('http://localhost:3001/api/analyze-vendor-fit', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/analyze-vendor-fit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
