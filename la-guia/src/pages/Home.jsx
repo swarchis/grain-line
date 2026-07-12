@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, LayoutGroup } from 'framer-motion';
@@ -8,6 +8,7 @@ import { useProduction } from '../context/ProductionContext.jsx';
 import { useNotifications } from '../context/NotificationsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
 import { PinnedPhoto, PhotoPanel, WaxSeal, Thumbtack } from '../components/decor.jsx';
 import ContinueWhereYouLeftOff from '../components/dashboard/ContinueWhereYouLeftOff.jsx';
@@ -150,6 +151,25 @@ export default function Home() {
   const featuredStageIdx = featured ? STAGES.findIndex(s => s.key === featured.stage) : -1;
   const nextStage = featuredStageIdx >= 0 && featuredStageIdx < STAGES.length - 1 ? STAGES[featuredStageIdx + 1] : null;
 
+  // The hero card's pinned photo shows the product's actual tech pack image
+  // (or, failing that, its newest design snapshot) instead of the honest
+  // placeholder texture — falls back to the placeholder if neither exists yet.
+  const [featuredImage, setFeaturedImage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFeaturedImage() {
+      if (!featured) { setFeaturedImage(null); return; }
+      const { data: tp } = await supabase.from('tech_packs').select('image_url').eq('product_id', featured.id).single();
+      if (cancelled) return;
+      if (tp?.image_url) { setFeaturedImage(tp.image_url); return; }
+      const { data: versions } = await supabase.from('design_versions').select('image_url').eq('product_id', featured.id).order('created_at', { ascending: false }).limit(1);
+      if (cancelled) return;
+      setFeaturedImage(versions?.[0]?.image_url || null);
+    }
+    loadFeaturedImage();
+    return () => { cancelled = true; };
+  }, [featured?.id]);
+
   const scrollTo = key => document.getElementById(`stage-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const handleDrop = (e, stageKey) => {
@@ -204,6 +224,7 @@ export default function Home() {
             <PinnedPhoto
               variant="weave" tone={SWATCH_TONES[products.indexOf(featured) % SWATCH_TONES.length]}
               aspect="3 / 4" tilt={-2.5} pinColor="var(--c-materials)"
+              imageUrl={featuredImage}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>

@@ -1052,6 +1052,47 @@ app.get('/api/social/callback/:platform', async (req, res) => {
 });
 
 
+// ---------------------------------------------------------
+// 9. CHAT ASSISTANT
+// ---------------------------------------------------------
+// The frontend gathers a text summary of the brand's own products/vendors/
+// etc. from its already-loaded contexts (same "client assembles context,
+// server just prompts" shape as /api/dashboard-suggestions) and posts it
+// here alongside the message and a short prior-turn transcript. callGemini
+// always asks for JSON back, so a conversational reply gets wrapped in a
+// single { "reply": "..." } object rather than returned as raw text.
+app.post('/api/chat-reply', async (req, res) => {
+  console.log("📥 Received chat message...");
+  try {
+    const { message, history, brandContext } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ ok: false, error: 'No message provided' });
+
+    const transcript = (history || [])
+      .slice(-20)
+      .map(h => `${h.senderType === 'ai' ? 'Assistant' : 'Founder'}: ${h.body}`)
+      .join('\n');
+
+    const prompt = `You are a helpful assistant embedded inside Grainline, a tool an independent clothing brand founder uses to manage design, tech packs, vendors, and production. Answer the founder's question using ONLY the brand data given below plus general apparel-industry knowledge — never invent specific numbers, vendor names, or product details that aren't in the data given to you.
+
+Brand data:
+${brandContext || 'No brand data available.'}
+${transcript ? `\nConversation so far:\n${transcript}\n` : ''}
+Founder's new message: "${message}"
+
+Be concise and direct — a couple of short paragraphs or a short list at most, not an essay. If the brand data doesn't contain what's needed to answer confidently, say so plainly instead of guessing.
+
+Return a JSON object with exactly this structure:
+{ "reply": "string, plain text, use \\n for line breaks, no markdown headers or bullet asterisks" }`;
+
+    const result = await callGemini(prompt);
+    console.log("✅ Chat reply successful");
+    res.json({ ok: true, reply: result.reply });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🧠 Backend running on http://localhost:${PORT}`);

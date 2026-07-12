@@ -77,20 +77,26 @@ const TONES = {
 
 // Honest placeholder for product/fabric/sketch imagery — no real photography
 // exists in this app yet, so this renders a deliberate textile-style abstraction
-// with a small caption, rather than pretending to be a real photo.
-export function PhotoPanel({ variant = 'fabric', tone = 'gold', label, icon = 'ph-image', aspect = '4 / 5', style, className }) {
+// with a small caption, rather than pretending to be a real photo. Pass a real
+// `imageUrl` (a tech pack image, design snapshot, etc.) to render an actual
+// photo instead — the texture/gradient only shows up when there's nothing real.
+export function PhotoPanel({ variant = 'fabric', tone = 'gold', label, icon = 'ph-image', aspect = '4 / 5', imageUrl, style, className }) {
   const [c1, c2] = TONES[tone] || TONES.gold;
   return (
     <div
       className={className}
       style={{
         position: 'relative', aspectRatio: aspect, borderRadius: 'var(--r-sm)', overflow: 'hidden',
-        background: `linear-gradient(155deg, ${c1}, ${c2})`,
+        background: imageUrl ? '#fff' : `linear-gradient(155deg, ${c1}, ${c2})`,
         border: '1px solid var(--border)',
         ...style,
       }}
     >
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: TEXTURES[variant] || TEXTURES.fabric, mixBlendMode: 'multiply', opacity: 0.5 }} />
+      {imageUrl ? (
+        <img src={imageUrl} alt={label || 'Product'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: TEXTURES[variant] || TEXTURES.fabric, mixBlendMode: 'multiply', opacity: 0.5 }} />
+      )}
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(33,29,24,0.32), transparent 55%)' }} />
       {label && (
         <div style={{ position: 'absolute', left: 12, right: 12, bottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
