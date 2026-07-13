@@ -69,6 +69,9 @@ export default function SignUp() {
           <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px', margin: '6px 0 14px' }}>
             {loading ? 'Creating...' : 'Create account'}
           </button>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', marginBottom: 14, lineHeight: 1.4 }}>
+            By creating an account, you agree to our <a href="#" onClick={e => { e.preventDefault(); navigate('/terms'); }} style={{ color: 'var(--ink-3)', textDecoration: 'underline' }}>Terms of Service</a> and <a href="#" onClick={e => { e.preventDefault(); navigate('/privacy'); }} style={{ color: 'var(--ink-3)', textDecoration: 'underline' }}>Privacy Policy</a>.
+          </div>
         </form>
         {isInvite && (
           <div className="form-hint" style={{ textAlign: 'center', marginBottom: 14 }}>
