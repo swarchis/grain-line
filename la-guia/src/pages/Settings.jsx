@@ -7,6 +7,7 @@ import { useTeam } from '../context/TeamContext.jsx';
 import { useTheme } from '../lib/useTheme.js';
 import BillingTab from '../components/BillingTab.jsx';
 import { getPlan } from '../data/plans.js';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 
 const TABS = [
   { key: 'profile', label: 'Profile', icon: 'ph-user-circle' },
@@ -99,9 +100,6 @@ function TeamTab() {
                   </button>
                 </form>
                 {error && <div className="form-hint" style={{ color: 'var(--red)', marginTop: 8 }}>{error}</div>}
-                <div className="form-hint" style={{ marginTop: 10 }}>
-                  This creates a real pending invite — as soon as that person signs up or logs in with this email, they're added automatically. There's no email notification sent yet, so let them know yourself.
-                </div>
               </>
             )}
           </div>
@@ -183,9 +181,6 @@ function CategoriesSection() {
             </button>
           </form>
           {error && <div className="form-hint" style={{ color: 'var(--red)', marginTop: 8 }}>{error}</div>}
-          <div className="form-hint" style={{ marginTop: 10 }}>
-            Categories show up wherever a product's category is picked, including on each design's Details panel.
-          </div>
         </div>
       </div>
 
@@ -207,7 +202,7 @@ function CategoriesSection() {
 
 export default function Settings() {
   const [tab, setTab] = useState('profile');
-  const { activeBrand, updateBrand } = useProducts();
+  const { activeBrand, updateBrand, brands } = useProducts();
   const { user } = useAuth();
   const { preferences, updatePreferences } = useUserPreferences();
   const { isDark, setTheme } = useTheme();
@@ -215,6 +210,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [showDeleteBrand, setShowDeleteBrand] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -279,6 +275,13 @@ export default function Settings() {
     }
   };
 
+  const handleDeleteBrand = async () => {
+    const { supabase } = await import('../lib/supabase.js');
+    const { error } = await supabase.from('brands').delete().eq('id', activeBrand.id);
+    if (error) throw error;
+    window.location.href = '/'; // Reload to pick up new active brand
+  };
+
   if (!activeBrand) return (
     <div className="content" style={{ textAlign: 'center', padding: 40 }}>
       <i className="ph ph-spinner ph-spin" style={{ fontSize: 24 }} />
@@ -305,23 +308,23 @@ export default function Settings() {
 
       <div className="content">
         {tab === 'profile' && (
-          <div className="card-raised" style={{ maxWidth: 520 }}>
-            <div className="card-header"><span className="card-title">Account summary</span></div>
-            <div className="card-body">
-              <div className="form-group">
-                <label className="form-label">Display name</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className="form-input" placeholder="Add your name" value={fullName} onChange={e => setFullName(e.target.value)} />
-                  <button className="btn btn-sm" onClick={saveName} disabled={savingName || fullName === (preferences.full_name || '')}>
-                    {savingName ? 'Saving…' : 'Save'}
-                  </button>
+          <div style={{ maxWidth: 520 }}>
+            <div className="card-raised" style={{ marginBottom: 24 }}>
+              <div className="card-header"><span className="card-title">Account summary</span></div>
+              <div className="card-body">
+                <div className="form-group">
+                  <label className="form-label">Display name</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="form-input" placeholder="Add your name" value={fullName} onChange={e => setFullName(e.target.value)} />
+                    <button className="btn btn-sm" onClick={saveName} disabled={savingName || fullName === (preferences.full_name || '')}>
+                      {savingName ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
                 </div>
-                <div className="form-hint">Shown in the sidebar and greeting instead of your email.</div>
+                <div className="list-row" style={{ padding: '10px 0' }}><span>Email</span><strong>{user?.email}</strong></div>
+                <div className="list-row" style={{ padding: '10px 0' }}><span>Role</span><strong style={{ textTransform: 'capitalize' }}>{activeBrand.memberRole || 'Owner'}</strong></div>
+                <div className="list-row" style={{ padding: '10px 0' }}><span>Member since</span><strong>{new Date(user?.created_at || Date.now()).toLocaleDateString()}</strong></div>
               </div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Email</span><strong>{user?.email}</strong></div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Role</span><strong style={{ textTransform: 'capitalize' }}>{activeBrand.memberRole || 'Owner'}</strong></div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Member since</span><strong>{new Date(user?.created_at || Date.now()).toLocaleDateString()}</strong></div>
-              <div className="list-row" style={{ padding: '10px 0' }}><span>Active brand</span><strong>{activeBrand.name}</strong></div>
             </div>
           </div>
         )}
@@ -369,6 +372,26 @@ export default function Settings() {
               </div>
             </div>
             <CategoriesSection />
+            
+            {/* DANGER ZONE */}
+            <div className="section-label" style={{ marginTop: 40, color: 'var(--red)' }}>Danger Zone</div>
+            <div className="card-raised" style={{ border: '1px solid var(--red-border)', background: 'var(--red-bg)' }}>
+              <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--red)' }}>Delete this brand</div>
+                  <div style={{ fontSize: 12, color: 'var(--red)', opacity: 0.8 }}>This will permanently remove all products, designs, and tech packs associated with {activeBrand.name}.</div>
+                </div>
+                <button 
+                  className="btn btn-sm" 
+                  style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
+                  onClick={() => setShowDeleteBrand(true)}
+                  disabled={brands.length <= 1}
+                >
+                  Delete Brand
+                </button>
+              </div>
+              {brands.length <= 1 && <div style={{ padding: '0 20px 20px', fontSize: 11, color: 'var(--red)', opacity: 0.7 }}>You cannot delete your only brand. Create another one first.</div>}
+            </div>
           </>
         )}
 
@@ -440,6 +463,14 @@ export default function Settings() {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal 
+        open={showDeleteBrand}
+        onClose={() => setShowDeleteBrand(false)}
+        itemLabel="brand"
+        itemName={activeBrand.name}
+        onConfirm={handleDeleteBrand}
+      />
     </>
   );
 }
