@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import AuthLayout from './AuthLayout.jsx';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -25,47 +26,36 @@ export default function ResetPassword() {
     }
   };
 
-  return (
-    <div className="auth-shell">
-      <div className="auth-card enter">
-        {sent ? (
-          <>
-            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--green-bg)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <i className="ph ph-check" style={{ fontSize: 20 }} />
-            </div>
-            <h1 style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 22, fontWeight: 500, marginBottom: 8 }}>Check your inbox</h1>
-            <p style={{ fontSize: 13.5, color: 'var(--ink-3)', marginBottom: 22, lineHeight: 1.6 }}>We sent a password reset link to <strong>{email}</strong>.</p>
-            <button className="btn" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={() => navigate('/login')}>Back to log in</button>
-          </>
-        ) : (
-          <>
-            <h1 style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 22, fontWeight: 500, marginBottom: 6 }}>Reset your password</h1>
-            <p style={{ fontSize: 13.5, color: 'var(--ink-3)', marginBottom: 24 }}>We'll email you a link to get back in.</p>
-            
-            {error && <div className="alert alert-red" style={{ marginBottom: 16, fontSize: 13 }}>{error}</div>}
+  if (sent) {
+    return (
+      <AuthLayout
+        eyebrow="Check your inbox"
+        title="Link's on its way"
+        subtitle={<>We emailed a reset link to <strong style={{ color: 'var(--ink-2)' }}>{email}</strong>. It's good for the next hour.</>}
+      >
+        <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={() => navigate('/login')}>Back to sign in</button>
+      </AuthLayout>
+    );
+  }
 
-            <form onSubmit={handleReset}>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input 
-                  className="form-input" 
-                  type="email" 
-                  placeholder="you@studio.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required 
-                />
-              </div>
-              <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 6 }} disabled={loading}>
-                {loading ? 'Sending...' : 'Send reset link'}
-              </button>
-            </form>
-            <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13, color: 'var(--ink-3)' }}>
-              <a href="#" onClick={e => { e.preventDefault(); navigate('/login'); }}>Back to log in</a>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+  return (
+    <AuthLayout
+      eyebrow="Password reset"
+      title="Forgot your password?"
+      subtitle="Give us the email on your account and we'll send a link to get back in."
+      footer={<a href="#" onClick={e => { e.preventDefault(); navigate('/login'); }}>Back to sign in</a>}
+    >
+      {error && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: '10px 14px', borderRadius: 'var(--r-sm)', marginBottom: 16, fontSize: 13, border: '1px solid var(--red-border)' }}>{error}</div>}
+
+      <form onSubmit={handleReset}>
+        <div className="form-group">
+          <label className="form-label">Email</label>
+          <input className="form-input" type="email" autoComplete="email" placeholder="you@studio.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 6 }} disabled={loading}>
+          {loading ? 'Sending…' : 'Send reset link'}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }

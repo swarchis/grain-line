@@ -6,145 +6,156 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Atelier palette — cream/ivory studio paper, charcoal ink, muted gold and sage accents */
-  --bg:           #F3EDE0;
-  --bg-1:         #FFFDF8;
-  --bg-2:         #FAF5E9;
-  --bg-3:         #EEE5D2;
-  --bg-hover:     #F1E9D9;
+  /* Draft-sheet palette — cool drafting-bone paper, near-black ink, a single
+     petrol-blue accent (the blue already living in the app's mark). Warm cream
+     traded for a cooler, more precise studio-vellum feel that reads as a tech
+     drawing sheet rather than a stationery pad. */
+  --bg:           #E8E9E3;
+  --bg-1:         #F6F6F1;
+  --bg-2:         #EEEFE9;
+  --bg-3:         #E1E2DB;
+  --bg-hover:     #ECEDE6;
 
-  --ink:          #2B2621;
-  --ink-2:        #55504A;
-  --ink-3:        #857D70;
-  --ink-4:        #B7AE9B;
+  --ink:          #16181D;
+  --ink-2:        #444851;
+  --ink-3:        #767B84;
+  --ink-4:        #A6AAA3;
 
-  --charcoal:     #211D18;
-  --charcoal-2:   #2E2924;
-  --cream:        #F6F0E3;
+  --charcoal:     #16181D;
+  --charcoal-2:   #23262E;
+  --cream:        #EEEFE9;
 
-  --accent:       #A9822E;
-  --accent-dim:   #8A6A22;
-  --accent-bg:    rgba(169, 130, 46, 0.12);
-  --accent-border:rgba(169, 130, 46, 0.32);
+  --accent:       #2F5D7C;
+  --accent-dim:   #234A64;
+  --accent-bg:    rgba(47, 93, 124, 0.10);
+  --accent-border:rgba(47, 93, 124, 0.30);
 
-  --sage:         #6E7B57;
-  --sage-bg:      rgba(110, 123, 87, 0.12);
-  --sage-border:  rgba(110, 123, 87, 0.3);
+  --sage:         #5E7C63;
+  --sage-bg:      rgba(94, 124, 99, 0.12);
+  --sage-border:  rgba(94, 124, 99, 0.3);
 
-  --green:        #5C7A4E;
-  --green-bg:     rgba(92, 122, 78, 0.1);
-  --green-border: rgba(92, 122, 78, 0.28);
-  --red:          #A34434;
-  --red-bg:       rgba(163, 68, 52, 0.1);
-  --red-border:   rgba(163, 68, 52, 0.28);
-  --amber:        #AD8636;
-  --amber-bg:     rgba(173, 134, 54, 0.1);
-  --amber-border: rgba(173, 134, 54, 0.28);
-  --blue:         #4F6E7C;
-  --blue-bg:      rgba(79, 110, 124, 0.1);
-  --blue-border:  rgba(79, 110, 124, 0.28);
+  --green:        #3E7B54;
+  --green-bg:     rgba(62, 123, 84, 0.1);
+  --green-border: rgba(62, 123, 84, 0.28);
+  --red:          #B0463A;
+  --red-bg:       rgba(176, 70, 58, 0.1);
+  --red-border:   rgba(176, 70, 58, 0.28);
+  --amber:        #A17A2C;
+  --amber-bg:     rgba(161, 122, 44, 0.1);
+  --amber-border: rgba(161, 122, 44, 0.28);
+  --blue:         #2F5D7C;
+  --blue-bg:      rgba(47, 93, 124, 0.1);
+  --blue-border:  rgba(47, 93, 124, 0.28);
 
-  /* Section spectrum — muted, curated tones rather than a bright rainbow */
-  --c-home:         #A9822E;
-  --c-design:       #7A6C8E;
-  --c-techpack:     #5C7A6B;
-  --c-organization: #A85C7A;
-  --c-vendors:      #9C7A3D;
-  --c-materials:    #8A6A4A;
-  --c-finalcheck:   #A3503F;
-  --c-analytics:    #4F6E7C;
-  --c-content:      #B4657D;
-  --c-settings:     #6E7B57;
+  /* Section spectrum — kept distinct for wayfinding, retuned cooler so the
+     whole set sits under the petrol accent instead of the old gold. */
+  --c-home:         #2F5D7C;
+  --c-design:       #6C6A96;
+  --c-techpack:     #4E7D6B;
+  --c-organization: #9C5A78;
+  --c-vendors:      #94743A;
+  --c-materials:    #7E6A54;
+  --c-finalcheck:   #A24C3E;
+  --c-analytics:    #3F6E7C;
+  --c-content:      #A65E77;
+  --c-settings:     #5E7C63;
 
-  --border:       #DFD5BC;
-  --border-2:     #CEC0A0;
-  --border-3:     #B7A87F;
+  --border:       #D2D4CD;
+  --border-2:     #C0C3BB;
+  --border-3:     #AAAEA5;
 
-  --shadow-sm:    0 2px 6px rgba(33,29,24,0.09), 0 1px 2px rgba(33,29,24,0.07);
-  --shadow-md:    0 14px 32px rgba(33,29,24,0.14), 0 3px 8px rgba(33,29,24,0.08);
-  --shadow-lg:    0 28px 70px rgba(33,29,24,0.22), 0 6px 16px rgba(33,29,24,0.1);
+  --shadow-sm:    0 1px 2px rgba(21,23,29,0.06), 0 2px 5px rgba(21,23,29,0.05);
+  --shadow-md:    0 6px 16px -6px rgba(21,23,29,0.13), 0 2px 6px rgba(21,23,29,0.07);
+  --shadow-lg:    0 22px 46px -20px rgba(21,23,29,0.26), 0 6px 16px rgba(21,23,29,0.10);
 
   --serif:        'Newsreader', Georgia, serif;
+  --display:      'Archivo', system-ui, sans-serif;
   --hand:         'Caveat', cursive;
   --sans:         'Inter', system-ui, sans-serif;
   --mono:         'Space Mono', monospace;
 
-  /* Sidebar is always dark charcoal — independent of the light/dark content toggle,
-     matching the atelier reference where the nav rail never changes with theme. */
-  --sb-bg:        #221D17;
-  --sb-bg-2:      #2A2420;
-  --sb-ink:       #F1E9D6;
-  --sb-ink-2:     #C6BBA1;
-  --sb-ink-3:     #8C8271;
-  --sb-border:    rgba(241, 233, 214, 0.09);
-  --sb-hover:     rgba(241, 233, 214, 0.06);
-  --sb-accent:    #D4AF6A;
+  /* Unified motion tokens — one rhythm for every transition in the app. */
+  --ease:         cubic-bezier(.16,.9,.35,1);
+  --ease-in:      cubic-bezier(.4,0,1,1);
+  --dur-1:        0.12s;
+  --dur-2:        0.2s;
+  --dur-3:        0.32s;
+
+  /* Sidebar rail — a cool graphite that stays constant across light/dark. */
+  --sb-bg:        #17191F;
+  --sb-bg-2:      #1F222A;
+  --sb-ink:       #ECEDE8;
+  --sb-ink-2:     #B9BEC6;
+  --sb-ink-3:     #7E838C;
+  --sb-border:    rgba(236, 237, 232, 0.09);
+  --sb-hover:     rgba(236, 237, 232, 0.06);
+  --sb-accent:    #6FA2C4;
 
   --sidebar-w:    258px;
   --topbar-h:     60px;
   --content-pad:  30px;
 
-  --r:            12px;
+  --r:            11px;
   --r-sm:         8px;
-  --r-lg:         20px;
+  --r-lg:         16px;
 }
 
 [data-theme="dark"] {
-  --bg:           #18150F;
-  --bg-1:         #201B14;
-  --bg-2:         #262019;
-  --bg-3:         #2E271D;
-  --bg-hover:     #2E271D;
+  --bg:           #101216;
+  --bg-1:         #171A1F;
+  --bg-2:         #1C2027;
+  --bg-3:         #232830;
+  --bg-hover:     #232830;
 
-  --ink:          #F1E9D6;
-  --ink-2:        #CBBFA0;
-  --ink-3:        #94896A;
-  --ink-4:        #5B5340;
+  --ink:          #ECEEF1;
+  --ink-2:        #BFC5CD;
+  --ink-3:        #868D97;
+  --ink-4:        #565C66;
 
-  --charcoal:     #14110D;
-  --charcoal-2:   #1C1712;
-  --cream:        #F1E9D6;
+  --charcoal:     #0D0F13;
+  --charcoal-2:   #171A1F;
+  --cream:        #ECEEF1;
 
-  --accent:       #D4AF6A;
-  --accent-dim:   #E4C285;
-  --accent-bg:    rgba(212, 175, 106, 0.14);
-  --accent-border:rgba(212, 175, 106, 0.32);
+  --accent:       #6FA2C4;
+  --accent-dim:   #8ABAD8;
+  --accent-bg:    rgba(111, 162, 196, 0.15);
+  --accent-border:rgba(111, 162, 196, 0.34);
 
-  --sage:         #9AAB80;
-  --sage-bg:      rgba(154, 171, 128, 0.14);
-  --sage-border:  rgba(154, 171, 128, 0.3);
+  --sage:         #8FB093;
+  --sage-bg:      rgba(143, 176, 147, 0.14);
+  --sage-border:  rgba(143, 176, 147, 0.3);
 
-  --green:        #8DB077;
-  --green-bg:     rgba(141, 176, 119, 0.14);
-  --green-border: rgba(141, 176, 119, 0.3);
-  --red:          #CB8267;
-  --red-bg:       rgba(203, 130, 103, 0.14);
-  --red-border:   rgba(203, 130, 103, 0.3);
-  --amber:        #D6AD5E;
-  --amber-bg:     rgba(214, 173, 94, 0.14);
-  --amber-border: rgba(214, 173, 94, 0.3);
-  --blue:         #86A6B4;
-  --blue-bg:      rgba(134, 166, 180, 0.14);
-  --blue-border:  rgba(134, 166, 180, 0.3);
+  --green:        #6FB07F;
+  --green-bg:     rgba(111, 176, 127, 0.14);
+  --green-border: rgba(111, 176, 127, 0.3);
+  --red:          #D08370;
+  --red-bg:       rgba(208, 131, 112, 0.14);
+  --red-border:   rgba(208, 131, 112, 0.3);
+  --amber:        #D3B26A;
+  --amber-bg:     rgba(211, 178, 106, 0.14);
+  --amber-border: rgba(211, 178, 106, 0.3);
+  --blue:         #6FA2C4;
+  --blue-bg:      rgba(111, 162, 196, 0.14);
+  --blue-border:  rgba(111, 162, 196, 0.3);
 
-  --c-home:         #D4AF6A;
-  --c-design:       #ACA0C6;
-  --c-techpack:     #8FB0A0;
-  --c-organization: #CB93AC;
-  --c-vendors:      #D0AD6B;
-  --c-materials:    #BB9A7C;
-  --c-finalcheck:   #CB8878;
-  --c-analytics:    #86A6B4;
-  --c-content:      #D699AC;
-  --c-settings:     #9AAB80;
+  --c-home:         #6FA2C4;
+  --c-design:       #ADAAD4;
+  --c-techpack:     #86B79E;
+  --c-organization: #D091AE;
+  --c-vendors:      #CBA96A;
+  --c-materials:    #BBA184;
+  --c-finalcheck:   #D0857A;
+  --c-analytics:    #7FA9BC;
+  --c-content:      #D294AC;
+  --c-settings:     #8FB093;
 
-  --border:       rgba(241, 233, 214, 0.1);
-  --border-2:     rgba(241, 233, 214, 0.16);
-  --border-3:     rgba(241, 233, 214, 0.24);
+  --border:       rgba(236, 238, 241, 0.1);
+  --border-2:     rgba(236, 238, 241, 0.16);
+  --border-3:     rgba(236, 238, 241, 0.24);
 
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.35);
-  --shadow-md:    0 8px 22px rgba(0,0,0,0.4);
-  --shadow-lg:    0 22px 55px rgba(0,0,0,0.5);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:    0 8px 22px -6px rgba(0,0,0,0.5);
+  --shadow-lg:    0 22px 55px -18px rgba(0,0,0,0.6);
 }
 
 /* ── Reset ────────────────────────────────────────────────────────────────── */
@@ -199,13 +210,12 @@ img { max-width: 100%; display: block; }
 .topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
 .page-title {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 27px;
-  font-weight: 500;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 25px;
   color: var(--ink);
-  letter-spacing: -0.005em;
-  line-height: 1;
+  letter-spacing: -0.022em;
+  line-height: 1.02;
 }
 .page-sub { font-size: 13px; color: var(--ink-3); }
 
@@ -385,7 +395,7 @@ img { max-width: 100%; display: block; }
 
 .stage-section { margin-bottom: 8px; scroll-margin-top: 90px; }
 .stage-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.stage-section-title { font-family: var(--serif); font-style: italic; font-size: 20px; font-weight: 500; color: var(--ink); }
+.stage-section-title { font-family: var(--display); font-size: 18px; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); }
 .stage-section-count { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--ink-3); }
 .stage-section-line { flex: 1; height: 0; border-top: 1.5px dashed var(--border); }
 .stage-rail {
@@ -561,6 +571,68 @@ img { max-width: 100%; display: block; }
 /* ── Auth screens ─────────────────────────────────────────────────────────── */
 .auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .auth-card { width: 100%; max-width: 420px; background: var(--bg-1); border: 1.5px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); padding: 40px 36px; }
+
+/* ── Motion & interaction layer ─────────────────────────────────────────────
+   One rhythm across the whole app: quiet at rest, a small deliberate response
+   on hover and press. Everything here moves transform/opacity only (no
+   reflow), on the shared easing token, and stands down entirely under
+   prefers-reduced-motion. */
+html { scroll-behavior: smooth; }
+
+a:focus-visible, button:focus-visible, .btn:focus-visible, .pill:focus-visible,
+.tab-item:focus-visible, .nav-item:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+/* Buttons — keep the lift, add a subtle press-scale */
+.btn { transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease); }
+.btn:active, .btn-primary:active { transform: translateY(0) scale(0.975); }
+
+/* Hover-cards lift cleanly on the shared easing */
+.card-hover { transition: box-shadow var(--dur-2) var(--ease), transform var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease); }
+.card-hover:hover { transform: translateY(-3px); }
+
+/* List rows — a petrol accent bar wipes in from the left on hover; it's an
+   inset shadow, so nothing around it ever shifts */
+.list-row { transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
+.list-row:hover { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Tabs — an underline that slides open under the active/hovered item */
+.tab-item { position: relative; border-bottom-color: transparent !important; transition: color var(--dur-2) var(--ease); }
+.tab-item::after {
+  content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2.5px;
+  background: var(--tab-accent, var(--accent)); border-radius: 2px;
+  transform: scaleX(0); transition: transform var(--dur-2) var(--ease);
+}
+.tab-item:hover::after { transform: scaleX(0.4); }
+.tab-item.active::after { transform: scaleX(1); }
+
+/* Nav — nudge the icon on hover for a little life */
+.nav-item { transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
+.nav-item .nav-item-icon { transition: transform var(--dur-1) var(--ease); }
+.nav-item:hover .nav-item-icon { transform: translateX(2px); }
+
+/* Small press feedback on chips and icon buttons */
+.pill:active { transform: scale(0.97); }
+.canvas-icon-btn:active, .bell-btn:active, .piece-move-btn:active { transform: scale(0.94); }
+
+/* Enrich the shared page-enter with a hair of scale */
+@keyframes fadeUpScale { from { opacity: 0; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: none; } }
+.enter { animation: fadeUpScale 0.5s var(--ease) both; }
+
+/* Skeleton shimmer for loading placeholders */
+@keyframes shimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+.shimmer { background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-hover) 50%, var(--bg-2) 75%); background-size: 840px 100%; animation: shimmer 1.3s linear infinite; border-radius: var(--r-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .enter { animation: none !important; }
+}
 
 /* ── PRINT MEDIA QUERY FOR PDF TECH PACK EXPORT ────────────── */
 .print-only { display: none; }
