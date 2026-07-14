@@ -64,9 +64,9 @@
   --border-2:     #C0C3BB;
   --border-3:     #AAAEA5;
 
-  --shadow-sm:    0 1px 2px rgba(21,23,29,0.06), 0 2px 5px rgba(21,23,29,0.05);
-  --shadow-md:    0 6px 16px -6px rgba(21,23,29,0.13), 0 2px 6px rgba(21,23,29,0.07);
-  --shadow-lg:    0 22px 46px -20px rgba(21,23,29,0.26), 0 6px 16px rgba(21,23,29,0.10);
+  --shadow-sm:    0 1px 0 rgba(21,23,29,0.03);
+  --shadow-md:    0 1px 2px rgba(21,23,29,0.05);
+  --shadow-lg:    0 20px 44px -20px rgba(21,23,29,0.30), 0 4px 12px rgba(21,23,29,0.10);
 
   --serif:        'Newsreader', Georgia, serif;
   --display:      'Archivo', system-ui, sans-serif;
@@ -95,9 +95,9 @@
   --topbar-h:     60px;
   --content-pad:  30px;
 
-  --r:            11px;
-  --r-sm:         8px;
-  --r-lg:         16px;
+  --r:            4px;
+  --r-sm:         3px;
+  --r-lg:         6px;
 }
 
 [data-theme="dark"] {
@@ -166,9 +166,12 @@ body {
   font-family: var(--sans);
   background-color: var(--bg);
   background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.032 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-    radial-gradient(620px 460px at 4% -4%, color-mix(in srgb, var(--accent) 6%, transparent), transparent),
+    radial-gradient(620px 460px at 4% -4%, color-mix(in srgb, var(--accent) 7%, transparent), transparent),
     radial-gradient(680px 500px at 106% 10%, color-mix(in srgb, var(--sage) 6%, transparent), transparent);
+  background-size: 30px 30px, 30px 30px, auto, auto, auto;
   background-attachment: fixed;
   color: var(--ink);
   line-height: 1.6;
@@ -571,6 +574,61 @@ img { max-width: 100%; display: block; }
 /* ── Auth screens ─────────────────────────────────────────────────────────── */
 .auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .auth-card { width: 100%; max-width: 420px; background: var(--bg-1); border: 1.5px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); padding: 40px 36px; }
+
+/* ── Technical drafting language ─────────────────────────────────────────────
+   The app chrome reads like a spec sheet, not a card dashboard: near-sharp
+   corners, hairline rules in place of soft shadows, monospace structural
+   labels, section headers ruled off like a drawing, squared chips, and a set
+   of registration marks on the primary instrument panel. This is the layer
+   that pulls the app out of generic-SaaS-card territory and onto the same
+   drawing sheet as the landing page. */
+
+/* Panels, not floating cards */
+.card, .card-raised { border-color: var(--border-2); }
+.card-header { border-bottom: 1.5px solid var(--border-2); padding: 14px 18px; }
+.card-title { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); }
+
+/* Page title — set in the display face, uppercase, like a drawing's title */
+.page-title { text-transform: uppercase; letter-spacing: -0.004em; font-size: 23px; }
+.page-eyebrow { font-family: var(--mono); font-weight: 700; }
+
+/* Section header, ruled off to the right edge and marked with a grainline tick */
+.section-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; color: var(--ink-2); }
+.section-label::before { content: ''; width: 7px; height: 9px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); flex-shrink: 0; margin-right: -2px; }
+.section-label::after { content: ''; flex: 1; height: 0; border-top: 1px solid var(--border-2); }
+
+/* Stat panel — an instrument readout with corner registration marks */
+.stats-row { box-shadow: none; border-color: var(--border-2); position: relative; }
+.stat-label { font-family: var(--mono); letter-spacing: 0.07em; }
+.stats-row::before, .stats-row::after {
+  content: ''; position: absolute; width: 9px; height: 9px; pointer-events: none; z-index: 2; border-color: var(--border-3);
+}
+.stats-row::before { top: 6px; left: 6px; border-top: 1.5px solid; border-left: 1.5px solid; }
+.stats-row::after { bottom: 6px; right: 6px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+
+/* Squared, hairline controls */
+.btn { border-radius: 4px; box-shadow: none; border-color: var(--border-2); }
+.btn:hover, .btn-primary { box-shadow: none; }
+.tag { border-radius: 3px; font-size: 11px; letter-spacing: 0.03em; }
+.pill-group { border-radius: 5px; padding: 3px; }
+.pill { border-radius: 3px; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.pill.active { box-shadow: none; }
+.flow-node { border-radius: 4px; }
+.flow-node.current { box-shadow: none; }
+
+/* Tabs as a spec-sheet segmented control */
+.tab-item { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* Inputs — hairline and sharp; label already reads as an annotation */
+.form-input, .form-select, .form-textarea { border-radius: 3px; border-width: 1px; }
+.form-label { font-family: var(--mono); }
+
+/* Sidebar nav — squared, mono group headers */
+.nav-item { border-radius: 4px; }
+.nav-group-label { font-family: var(--mono); }
+
+/* Hover-cards get a crisp keyline instead of a soft float */
+.card-hover:hover { box-shadow: inset 0 0 0 1.5px var(--accent-border); border-color: var(--accent-border); }
 
 /* ── Motion & interaction layer ─────────────────────────────────────────────
    One rhythm across the whole app: quiet at rest, a small deliberate response
