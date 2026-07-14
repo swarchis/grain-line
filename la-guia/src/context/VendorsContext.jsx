@@ -170,7 +170,7 @@ export function VendorsProvider({ children }) {
 
   // 'counter' = what the founder proposed back to the vendor; 'response' =
   // what the founder heard back — both are the founder's own record-keeping,
-  // since vendors aren't Grainline users and can't post into this directly.
+  // since vendors aren't Atelier users and can't post into this directly.
   const addNegotiation = async (quoteId, { direction, amount, note }) => {
     const { data, error } = await supabase
       .from('quote_negotiations')

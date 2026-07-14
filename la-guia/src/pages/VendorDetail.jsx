@@ -338,7 +338,7 @@ export default function VendorDetail() {
           </div>
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: -12, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
-          <i className="ph ph-info" /> Verification is a manual judgment you make yourself — Grainline never marks a vendor verified automatically.
+          <i className="ph ph-info" /> Verification is a manual judgment you make yourself — Atelier never marks a vendor verified automatically.
         </div>
 
         <div className="stats-row">

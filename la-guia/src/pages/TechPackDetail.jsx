@@ -764,7 +764,7 @@ export default function TechPackDetail() {
 
       {/* ── PRINT ONLY LAYOUT (Hidden during normal web browsing) ── */}
       <div className="print-only tech-pack-print">
-        <h1>{activeBrand?.name || 'Grainline Brand'} - Tech Pack Specification</h1>
+        <h1>{activeBrand?.name || 'Atelier Brand'} - Tech Pack Specification</h1>
 
         <div className="meta-grid">
           <div className="meta-item"><strong>Style Name:</strong> {product.name}</div>
@@ -887,7 +887,7 @@ export default function TechPackDetail() {
         )}
 
         <div className="footer">
-          Generated via Grainline Production OS • {new Date().toLocaleDateString()}
+          Generated via Atelier Production OS • {new Date().toLocaleDateString()}
         </div>
       </div>
     </>

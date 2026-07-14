@@ -53,7 +53,7 @@ export default function LogIn() {
           </button>
         </form>
         <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13, color: 'var(--ink-3)' }}>
-          New to Grainline? <a href="#" onClick={e => { e.preventDefault(); navigate('/signup'); }}>Create a workspace</a>
+          New to Atelier? <a href="#" onClick={e => { e.preventDefault(); navigate('/signup'); }}>Create a workspace</a>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const APP_NAME = 'Grainline';
+const APP_NAME = 'Atelier';
 
 export default function TermsOfService() {
   const navigate = useNavigate();

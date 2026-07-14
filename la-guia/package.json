@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Grainline — production OS for independent clothing brands (frontend shell)",
+  "description": "Atelier — production OS for independent clothing brands (frontend shell)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -227,7 +227,7 @@ export default function Welcome() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <Logomark />
-          <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 19, fontWeight: 500 }}>Grainline</span>
+          <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 19, fontWeight: 500 }}>Atelier</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
           <a href="#features" className="gl-nav-link gl-nav-a" style={{ fontSize: 13, color: 'var(--ink-3)' }}>Features</a>
@@ -255,7 +255,7 @@ export default function Welcome() {
               </span>
             </motion.h1>
             <motion.p variants={fadeUp} style={{ fontSize: 17, color: 'var(--ink-2)', lineHeight: 1.65, maxWidth: 480, marginBottom: 30 }}>
-              Grainline is the production operating system for founders building their own clothing line — one workspace to design, spec, source, and ship, instead of a scattered stack of spreadsheets, DMs, and freelance tech-pack files.
+              Atelier is the production operating system for founders building their own clothing line — one workspace to design, spec, source, and ship, instead of a scattered stack of spreadsheets, DMs, and freelance tech-pack files.
             </motion.p>
             <motion.div variants={fadeUp} style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <motion.button
@@ -460,7 +460,7 @@ export default function Welcome() {
         <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Logomark size={20} />
-            <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 14 }}>Grainline</span>
+            <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 14 }}>Atelier</span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--ink-4)' }}>The production operating system for independent clothing brands.</div>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>

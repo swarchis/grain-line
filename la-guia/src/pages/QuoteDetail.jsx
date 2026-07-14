@@ -284,7 +284,7 @@ export default function QuoteDetail() {
           <div className="card-header"><span className="card-title">Negotiation</span></div>
           <div className="card-body">
             <div className="form-hint" style={{ marginBottom: 16 }}>
-              Vendors aren't on Grainline, so this is your own running record of counter-offers and what they came back with — not a live chat.
+              Vendors aren't on Atelier, so this is your own running record of counter-offers and what they came back with — not a live chat.
             </div>
             {negotiations.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>

@@ -80,7 +80,7 @@ export default function Sidebar() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <GrainlineMark />
             <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 23, fontWeight: 500, color: 'var(--sb-ink)', letterSpacing: '-0.01em' }}>
-              Grainline
+              Atelier
             </span>
           </div>
           <div style={{ fontSize: 9.5, color: 'var(--sb-ink-3)', marginTop: 7, fontFamily: 'var(--sans)', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600 }}>

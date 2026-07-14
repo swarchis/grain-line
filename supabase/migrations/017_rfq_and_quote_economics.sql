@@ -1,5 +1,5 @@
 -- RFQ & Quotes: sending one request-for-quote to multiple vendors at once,
--- a manual counter-offer/negotiation log (vendors aren't Grainline users, so
+-- a manual counter-offer/negotiation log (vendors aren't Atelier users, so
 -- this is the founder's own record of the back-and-forth, not a live two-way
 -- chat), and cached AI-assisted cost economics per quote.
 -- Run this in the Supabase SQL Editor after 003_vendor_enhancements.sql.

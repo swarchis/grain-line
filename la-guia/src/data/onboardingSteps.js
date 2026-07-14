@@ -12,7 +12,7 @@ export const ONBOARDING_STEPS = [
   {
     id: 'welcome',
     path: '/',
-    title: 'Welcome to Grainline',
+    title: 'Welcome to Atelier',
     body: "This is a quick tour of everything in your production studio, in the order you'll actually use it — sketch to sale. Skip any step, or the whole thing, and re-open this tour anytime from the sidebar.",
   },
   {

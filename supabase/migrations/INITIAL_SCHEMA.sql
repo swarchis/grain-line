@@ -1,4 +1,4 @@
--- GRAINLINE INITIAL SCHEMA
+-- ATELIER INITIAL SCHEMA
 -- Transcribed from Dashboard Visualizer + Recent Feature Updates
 
 -- 1. BRANDS

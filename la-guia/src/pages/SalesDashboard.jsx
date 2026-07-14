@@ -97,7 +97,7 @@ export default function SalesDashboard() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
 
-      // Fetch all SKUs for this brand to map Shopify items to Grainline product IDs
+      // Fetch all SKUs for this brand to map Shopify items to Atelier product IDs
       const productIds = products.map(p => p.id);
       let skuMap = {};
       if (productIds.length > 0) {
@@ -330,7 +330,7 @@ export default function SalesDashboard() {
                        <input className="form-input" placeholder="e.g. my-brand.myshopify.com" value={shopDomain} onChange={e => setShopDomain(e.target.value)} required />
                        <button type="submit" className="btn btn-primary" disabled={!shopDomain.trim()}>Connect Store</button>
                      </div>
-                     <div className="form-hint" style={{ marginTop: 8 }}>You will be redirected to Shopify to authorize Grainline. NOTE: You must add your Shopify API Keys to your `api/.env` file first.</div>
+                     <div className="form-hint" style={{ marginTop: 8 }}>You will be redirected to Shopify to authorize Atelier. NOTE: You must add your Shopify API Keys to your `api/.env` file first.</div>
                    </div>
                 </div>
               </form>

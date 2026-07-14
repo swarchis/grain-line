@@ -19,8 +19,8 @@ const stripe = require('stripe')(key);
 const ENV_PATH = path.join(__dirname, '..', '.env');
 
 const TIERS = [
-  { name: 'Grainline Basic', envKey: 'STRIPE_PRICE_BASIC', unitAmount: 2900 },
-  { name: 'Grainline Premium', envKey: 'STRIPE_PRICE_PREMIUM', unitAmount: 7900 },
+  { name: 'Atelier Basic', envKey: 'STRIPE_PRICE_BASIC', unitAmount: 2900 },
+  { name: 'Atelier Premium', envKey: 'STRIPE_PRICE_PREMIUM', unitAmount: 7900 },
 ];
 
 async function ensureProductAndPrice({ name, unitAmount }) {

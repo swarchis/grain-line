@@ -764,9 +764,9 @@ app.post('/api/send-invite', async (req, res) => {
 
     const htmlBody = `
       <div style="font-family: sans-serif; padding: 20px; color: #222;">
-        <h2>You've been invited to Grainline!</h2>
+        <h2>You've been invited to Atelier!</h2>
         <p><strong>${inviterName || 'A teammate'}</strong> has invited you to join the <strong>${brandName}</strong> workspace as an ${role}.</p>
-        <p>Grainline is a production operating system for fashion brands.</p>
+        <p>Atelier is a production operating system for fashion brands.</p>
         <a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background: #211D18; color: #fff; text-decoration: none; border-radius: 8px; margin-top: 10px;">
           Join Workspace
         </a>
@@ -774,9 +774,9 @@ app.post('/api/send-invite', async (req, res) => {
     `;
 
     const data = await resend.emails.send({
-      from: 'Grainline <onboarding@resend.dev>',
+      from: 'Atelier <onboarding@resend.dev>',
       to: email, 
-      subject: `Join ${brandName} on Grainline`,
+      subject: `Join ${brandName} on Atelier`,
       html: htmlBody,
     });
 
@@ -1072,7 +1072,7 @@ app.post('/api/chat-reply', async (req, res) => {
       .map(h => `${h.senderType === 'ai' ? 'Assistant' : 'Founder'}: ${h.body}`)
       .join('\n');
 
-    const prompt = `You are a helpful assistant embedded inside Grainline, a tool an independent clothing brand founder uses to manage design, tech packs, vendors, and production. Answer the founder's question using ONLY the brand data given below plus general apparel-industry knowledge — never invent specific numbers, vendor names, or product details that aren't in the data given to you.
+    const prompt = `You are a helpful assistant embedded inside Atelier, a tool an independent clothing brand founder uses to manage design, tech packs, vendors, and production. Answer the founder's question using ONLY the brand data given below plus general apparel-industry knowledge — never invent specific numbers, vendor names, or product details that aren't in the data given to you.
 
 Brand data:
 ${brandContext || 'No brand data available.'}
@@ -1215,7 +1215,7 @@ Include one "levers" entry for every non-choice id, and one "choiceLevers" entry
 // 9. HEALTH CHECK (For Railway)
 // ---------------------------------------------------------
 app.get('/', (req, res) => {
-  res.status(200).json({ ok: true, message: 'Grainline API is running successfully.' });
+  res.status(200).json({ ok: true, message: 'Atelier API is running successfully.' });
 });
 
 app.get('/health', (req, res) => {
