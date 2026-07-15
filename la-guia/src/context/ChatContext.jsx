@@ -49,16 +49,20 @@ export function ChatProvider({ children }) {
           .insert([{ brand_id: activeBrand.id, type: 'ai', name: 'AI Assistant', created_by: user.id }])
           .select()
           .single();
-        const { data: rpcCreated, error: rpcError } = createError
-          ? await supabase.rpc('ensure_personal_ai_chat', { p_brand_id: activeBrand.id }).single()
+        const { data: rpcResult, error: rpcError } = createError
+          ? await supabase.rpc('ensure_personal_ai_chat', { p_brand_id: activeBrand.id })
           : { data: null, error: null };
+        const rpcCreated = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
         // Surfaced (not just console.error'd) since this was previously the
         // most common silent failure — migration 016 not run, or its RLS
         // policies not applied — and swallowing it just made the AI
         // Assistant entry mysteriously vanish with no way to tell why.
         // Kept non-fatal to the rest of loadChats so a broken AI-chat
         // insert never takes working group chats down with it.
-        if (rpcError) setLoadError(rpcError.message || createError.message);
+        if (rpcError) {
+          console.error('AI chat creation failed', { createError, rpcError, brandId: activeBrand.id, userId: user.id });
+          setLoadError(rpcError.message || createError.message);
+        }
         else mine = created || rpcCreated;
       }
       setAiChat(mine || null);
