@@ -427,7 +427,7 @@ export default function DesignDetail() {
           </div>
         )}
 
-        <div style={{ maxWidth: showSplitStudio ? 'none' : 1080, display: 'flex', gap: showSplitStudio ? 0 : 16, alignItems: 'flex-start', marginBottom: 16 }}>
+        <div className="canvas-row" style={{ maxWidth: showSplitStudio ? 'none' : 1080, display: 'flex', gap: showSplitStudio ? 0 : 16, alignItems: 'flex-start', marginBottom: 16 }}>
           <div style={{ flex: showSplitStudio ? '0 0 auto' : 1, width: showSplitStudio ? splitWidth : undefined, minWidth: 0, height: expanded ? 0 : 600 }}>
             <div className={`canvas-panel ${expanded ? 'expanded' : ''}`} style={{ '--cp-accent': 'var(--c-design)' }}>
               <div className="canvas-panel-header">

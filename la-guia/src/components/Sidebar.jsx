@@ -35,6 +35,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('grainline_nav_collapsed')) || []; } catch { return []; }
   });
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -64,7 +65,13 @@ export default function Sidebar() {
   };
 
   return (
+    <>
+    <button className="mobile-nav-toggle" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+      <i className="ph ph-list" />
+    </button>
+    {mobileOpen && <div className="mobile-nav-backdrop" onClick={() => setMobileOpen(false)} />}
     <nav
+      className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
       style={{
         width: 'var(--sidebar-w)', flexShrink: 0,
         backgroundColor: 'var(--sb-bg)',
@@ -168,6 +175,7 @@ export default function Sidebar() {
                   to={item.path}
                   end={item.path === '/'}
                   className="nav-item"
+                  onClick={() => setMobileOpen(false)}
                   style={({ isActive }) => ({
                     color: isActive ? 'var(--sb-ink)' : 'var(--sb-ink-2)',
                     background: isActive ? 'var(--sb-hover)' : 'transparent',
@@ -185,7 +193,7 @@ export default function Sidebar() {
       </div>
 
       <div style={{ padding: '10px 12px 14px', borderTop: '1px solid var(--sb-border)' }}>
-        <NavLink to="/settings" className="nav-item" style={({ isActive }) => ({
+        <NavLink to="/settings" className="nav-item" onClick={() => setMobileOpen(false)} style={({ isActive }) => ({
           color: isActive ? 'var(--sb-ink)' : 'var(--sb-ink-2)',
           background: isActive ? 'var(--sb-hover)' : 'transparent',
           border: '1px solid transparent',
@@ -232,5 +240,6 @@ export default function Sidebar() {
         </div>
       </div>
     </nav>
+    </>
   );
 }
