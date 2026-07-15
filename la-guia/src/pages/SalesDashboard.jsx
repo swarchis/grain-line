@@ -8,6 +8,7 @@ import { useProduction } from '../context/ProductionContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { exportCSV } from '../lib/csvExport.js';
 import { consumeOAuthHandoff } from '../lib/oauthHandoff.js';
+import { platformAdapters } from '../lib/ecommerceSync.js';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import RevenueChart from '../components/RevenueChart.jsx';
@@ -31,13 +32,18 @@ export default function SalesDashboard() {
   const location = useLocation();
   const [tab, setTab] = useState('overview');
   const { products, activeBrand, loading: productsLoading } = useProducts();
-  const { connection, monthlySales, productSales, loading: salesLoading, disconnectStore, refresh: refreshSales } = useSales();
+  const { connection, connections, monthlySales, productSales, loading: salesLoading, disconnectStore, refresh: refreshSales } = useSales();
   const { vendors, quotes } = useVendors();
   const { orders } = useProduction();
   const [shopDomain, setShopDomain] = useState('');
-  
+
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
+
+  const wooConnection = connections.find(c => c.platform === 'woocommerce') || null;
+  const [wooForm, setWooForm] = useState({ storeUrl: '', consumerKey: '', consumerSecret: '' });
+  const [wooConnecting, setWooConnecting] = useState(false);
+  const [wooError, setWooError] = useState(null);
 
   // 1. Catch OAuth Returns
   useEffect(() => {
@@ -102,8 +108,58 @@ export default function SalesDashboard() {
     window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/shopify/auth?shop=${domain}&brandId=${activeBrand?.id}`;
   };
 
-  // 2. Fetch from Shopify via Backend Proxy and Save to Supabase
-  // 2. Fetch from Shopify via Backend Proxy and Save to Supabase
+  // Shared by every platform's sync — orders already normalized to
+  // { created_at, total_price, line_items: [{ sku, price, quantity }] }
+  // (see ecommerceSync.js's normalizeWooOrder for the WooCommerce side;
+  // Shopify's raw order shape already matches this natively).
+  const aggregateAndUpsertOrders = async (orders, platform) => {
+    const productIds = products.map(p => p.id);
+    let skuMap = {};
+    if (productIds.length > 0) {
+      const { data: variants } = await supabase
+        .from('product_variants')
+        .select('sku, product_id')
+        .in('product_id', productIds);
+      (variants || []).forEach(v => { if (v.sku) skuMap[v.sku] = v.product_id; });
+    }
+
+    const aggregates = {};
+    orders.forEach(order => {
+      if (!order.created_at) return;
+      const month = order.created_at.substring(0, 7); // "YYYY-MM"
+      if (!aggregates[month]) aggregates[month] = { brandLevel: { revenue: 0, count: 0 }, products: {} };
+
+      aggregates[month].brandLevel.revenue += parseFloat(order.total_price || 0);
+      aggregates[month].brandLevel.count += 1;
+
+      const productsInThisOrder = new Set();
+      (order.line_items || []).forEach(item => {
+        const prodId = skuMap[item.sku];
+        if (!prodId) return;
+        if (!aggregates[month].products[prodId]) aggregates[month].products[prodId] = { revenue: 0, count: 0 };
+        aggregates[month].products[prodId].revenue += parseFloat(item.price || 0) * parseInt(item.quantity || 1);
+        if (!productsInThisOrder.has(prodId)) {
+          aggregates[month].products[prodId].count += 1;
+          productsInThisOrder.add(prodId);
+        }
+      });
+    });
+
+    const toInsert = [];
+    Object.keys(aggregates).forEach(month => {
+      toInsert.push({ brand_id: activeBrand.id, product_id: null, month, platform, revenue: aggregates[month].brandLevel.revenue, orders_count: aggregates[month].brandLevel.count });
+      Object.keys(aggregates[month].products).forEach(prodId => {
+        toInsert.push({ brand_id: activeBrand.id, product_id: prodId, month, platform, revenue: aggregates[month].products[prodId].revenue, orders_count: aggregates[month].products[prodId].count });
+      });
+    });
+
+    for (let i = 0; i < toInsert.length; i += 50) {
+      const chunk = toInsert.slice(i, i + 50);
+      const { error } = await supabase.from('sales_data').upsert(chunk, { onConflict: 'brand_id, product_id, month, platform' });
+      if (error) console.error("Upsert chunk error:", error);
+    }
+  };
+
   const syncSales = async () => {
     if (!connection) return;
     setSyncing(true);
@@ -116,92 +172,55 @@ export default function SalesDashboard() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-
-      // Fetch all SKUs for this brand to map Shopify items to Atelier product IDs
-      const productIds = products.map(p => p.id);
-      let skuMap = {};
-      if (productIds.length > 0) {
-         const { data: variants } = await supabase
-           .from('product_variants')
-           .select('sku, product_id')
-           .in('product_id', productIds);
-         (variants || []).forEach(v => {
-           if (v.sku) skuMap[v.sku] = v.product_id;
-         });
-      }
-
-      // Aggregate raw Shopify orders by Month (YYYY-MM)
-      const aggregates = {};
-      data.orders.forEach(order => {
-        const month = order.created_at.substring(0, 7); // "YYYY-MM"
-        if (!aggregates[month]) {
-          aggregates[month] = { brandLevel: { revenue: 0, count: 0 }, products: {} };
-        }
-
-        // Add to brand-level totals
-        aggregates[month].brandLevel.revenue += parseFloat(order.total_price || 0);
-        aggregates[month].brandLevel.count += 1;
-
-        // Track which products were in this order so we don't double-count the order
-        const productsInThisOrder = new Set();
-        
-        // Loop through line items to assign product-level revenue
-        (order.line_items || []).forEach(item => {
-           const sku = item.sku;
-           const prodId = skuMap[sku];
-           
-           if (prodId) {
-              if (!aggregates[month].products[prodId]) {
-                 aggregates[month].products[prodId] = { revenue: 0, count: 0 };
-              }
-              // Add gross item revenue
-              aggregates[month].products[prodId].revenue += parseFloat(item.price || 0) * parseInt(item.quantity || 1);
-              
-              // Increment the order count for this product if we haven't already for this specific order
-              if (!productsInThisOrder.has(prodId)) {
-                 aggregates[month].products[prodId].count += 1;
-                 productsInThisOrder.add(prodId);
-              }
-           }
-        });
-      });
-
-      // Format for Supabase Insertion
-      const toInsert = [];
-      Object.keys(aggregates).forEach(month => {
-         // 1. Insert Brand-level row (product_id is null)
-         toInsert.push({
-           brand_id: activeBrand.id,
-           product_id: null,
-           month: month,
-           revenue: aggregates[month].brandLevel.revenue,
-           orders_count: aggregates[month].brandLevel.count
-         });
-         
-         // 2. Insert Product-level rows
-         Object.keys(aggregates[month].products).forEach(prodId => {
-           toInsert.push({
-             brand_id: activeBrand.id,
-             product_id: prodId,
-             month: month,
-             revenue: aggregates[month].products[prodId].revenue,
-             orders_count: aggregates[month].products[prodId].count
-           });
-         });
-      });
-
-      // Insert in chunks of 50 to respect Supabase limits
-      for (let i = 0; i < toInsert.length; i += 50) {
-        const chunk = toInsert.slice(i, i + 50);
-        const { error } = await supabase.from('sales_data').upsert(chunk, { onConflict: 'brand_id, product_id, month' });
-        if (error) console.error("Upsert chunk error:", error);
-      }
-
+      await aggregateAndUpsertOrders(data.orders, 'shopify');
       await refreshSales();
     } catch (err) {
       setSyncError(err.message);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const syncWooCommerce = async () => {
+    if (!wooConnection) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const orders = await platformAdapters.woocommerce.fetchOrders(wooConnection);
+      await aggregateAndUpsertOrders(orders, 'woocommerce');
+      await refreshSales();
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncAll = async () => {
+    if (connection) await syncSales();
+    if (wooConnection) await syncWooCommerce();
+  };
+
+  const handleWooConnect = async (e) => {
+    e.preventDefault();
+    setWooConnecting(true);
+    setWooError(null);
+    try {
+      await platformAdapters.woocommerce.validate({ shop_domain: wooForm.storeUrl, api_key: wooForm.consumerKey, access_token: wooForm.consumerSecret });
+      const { error } = await supabase.from('store_connections').upsert({
+        brand_id: activeBrand.id,
+        platform: 'woocommerce',
+        shop_domain: wooForm.storeUrl.trim(),
+        api_key: wooForm.consumerKey.trim(),
+        access_token: wooForm.consumerSecret.trim(),
+      }, { onConflict: 'brand_id, platform' });
+      if (error) throw error;
+      setWooForm({ storeUrl: '', consumerKey: '', consumerSecret: '' });
+      await refreshSales();
+    } catch (err) {
+      setWooError(err.message);
+    } finally {
+      setWooConnecting(false);
     }
   };
 
@@ -217,12 +236,12 @@ export default function SalesDashboard() {
             <div className="page-eyebrow" style={{ color: 'var(--c-analytics)' }}>Analytics & Sales</div>
             <h1 className="page-title">Sales Dashboard</h1>
           </div>
-          <div className="page-sub">{connection ? connection.shop_domain : 'No store connected'}</div>
+          <div className="page-sub">{connections.length > 0 ? `${connections.length} store${connections.length > 1 ? 's' : ''} connected` : 'No store connected'}</div>
         </div>
         <div className="topbar-right">
-          {connection && (
-            <button className="btn btn-primary" onClick={syncSales} disabled={syncing}>
-              {syncing ? <><i className="ph ph-spinner ph-spin"/> Syncing...</> : <><i className="ph ph-arrows-clockwise"/> Sync Sales</>}
+          {connections.length > 0 && (
+            <button className="btn btn-primary" onClick={syncAll} disabled={syncing}>
+              {syncing ? <><i className="ph ph-spinner ph-spin"/> Syncing...</> : <><i className="ph ph-arrows-clockwise"/> Sync All Stores</>}
             </button>
           )}
         </div>
@@ -239,14 +258,14 @@ export default function SalesDashboard() {
 
         {tab === 'overview' && (
           <>
-            {!connection ? (
-              <EmptyState 
-                icon="ph-plug" 
-                color="var(--c-analytics)" 
-                title="Shopify Not Connected" 
-                sub="Connect your store in the Connections tab to unlock live sales data and profitability tracking." 
-                cta="Go to Connections" 
-                onCta={() => setTab('connections')} 
+            {connections.length === 0 ? (
+              <EmptyState
+                icon="ph-plug"
+                color="var(--c-analytics)"
+                title="No store connected"
+                sub="Connect Shopify or WooCommerce in the Connections tab to unlock live sales data and profitability tracking."
+                cta="Go to Connections"
+                onCta={() => setTab('connections')}
               />
             ) : (
               <>
@@ -350,7 +369,7 @@ export default function SalesDashboard() {
                 </div>
                 <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>{connection.shop_domain}</div>
-                  <button className="btn btn-sm" onClick={disconnectStore}>Disconnect</button>
+                  <button className="btn btn-sm" onClick={() => disconnectStore('shopify')}>Disconnect</button>
                 </div>
               </div>
             ) : (
@@ -370,7 +389,50 @@ export default function SalesDashboard() {
                 </div>
               </form>
             )}
-            <EmptyState icon="ph-plug" color="var(--c-analytics)" title="No other integrations yet" sub="TikTok Shop and other storefronts will connect here once available." />
+
+            {wooConnection ? (
+              <div className="card-raised" style={{ marginBottom: 20 }}>
+                <div className="card-header">
+                  <span className="card-title">WooCommerce</span>
+                  <span className="tag tag-green">Connected</span>
+                </div>
+                <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>{wooConnection.shop_domain}</div>
+                  <button className="btn btn-sm" onClick={() => disconnectStore('woocommerce')}>Disconnect</button>
+                </div>
+              </div>
+            ) : (
+              <form className="card-raised" style={{ marginBottom: 20 }} onSubmit={handleWooConnect}>
+                <div className="card-header">
+                  <span className="card-title">Connect WooCommerce</span>
+                </div>
+                <div className="card-body">
+                  {wooError && (
+                    <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: '10px 14px', borderRadius: 'var(--r-sm)', marginBottom: 14, fontSize: 13, border: '1px solid var(--red-border)' }}>{wooError}</div>
+                  )}
+                  <div className="form-group">
+                    <label className="form-label">Store URL</label>
+                    <input className="form-input" placeholder="https://your-store.com" value={wooForm.storeUrl} onChange={e => setWooForm(f => ({ ...f, storeUrl: e.target.value }))} required />
+                  </div>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Consumer Key</label>
+                      <input className="form-input" placeholder="ck_..." value={wooForm.consumerKey} onChange={e => setWooForm(f => ({ ...f, consumerKey: e.target.value }))} required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Consumer Secret</label>
+                      <input className="form-input" type="password" placeholder="cs_..." value={wooForm.consumerSecret} onChange={e => setWooForm(f => ({ ...f, consumerSecret: e.target.value }))} required />
+                    </div>
+                  </div>
+                  <button type="submit" className="btn btn-primary" disabled={wooConnecting || !wooForm.storeUrl.trim() || !wooForm.consumerKey.trim() || !wooForm.consumerSecret.trim()}>
+                    {wooConnecting ? 'Verifying…' : 'Connect Store'}
+                  </button>
+                  <div className="form-hint" style={{ marginTop: 8 }}>Generate a key in your own wp-admin under WooCommerce &gt; Settings &gt; Advanced &gt; REST API — give it Read access at minimum. No OAuth, no app review, no redirect.</div>
+                </div>
+              </form>
+            )}
+
+            <EmptyState icon="ph-plug" color="var(--c-analytics)" title="Etsy and TikTok Shop coming up next" sub="A few more storefronts will connect here as they're built out." />
           </>
         )}
       </div>

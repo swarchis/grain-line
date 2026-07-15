@@ -807,6 +807,73 @@ app.post('/api/shopify/fetch-orders', async (req, res) => {
 });
 
 // ---------------------------------------------------------
+// 4B. WOOCOMMERCE INTEGRATION
+// ---------------------------------------------------------
+// WooCommerce's REST API is plain Basic Auth over HTTPS with a Consumer
+// Key/Secret the founder generates themselves in wp-admin (WooCommerce >
+// Settings > Advanced > REST API) — no OAuth app, no platform review,
+// unlike every other integration in this batch. This validates those
+// credentials with a real call before the frontend persists them.
+
+function wooAuthHeader(consumerKey, consumerSecret) {
+  return 'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+}
+
+function normalizeStoreUrl(url) {
+  return url.replace(/\/+$/, '');
+}
+
+app.post('/api/woocommerce/validate', async (req, res) => {
+  const { storeUrl, consumerKey, consumerSecret } = req.body;
+  if (!storeUrl || !consumerKey || !consumerSecret) return res.status(400).json({ ok: false, error: 'Missing store URL or credentials' });
+  try {
+    const base = normalizeStoreUrl(storeUrl);
+    const response = await fetch(`${base}/wp-json/wc/v3/system_status`, {
+      headers: { Authorization: wooAuthHeader(consumerKey, consumerSecret) }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(response.status === 401 ? 'Invalid Consumer Key/Secret' : `Store responded with ${response.status}: ${text.slice(0, 200)}`);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/woocommerce/fetch-orders', async (req, res) => {
+  const { storeUrl, consumerKey, consumerSecret } = req.body;
+  if (!storeUrl || !consumerKey || !consumerSecret) return res.status(400).json({ ok: false, error: 'Missing store URL or credentials' });
+  try {
+    const base = normalizeStoreUrl(storeUrl);
+    const response = await fetch(`${base}/wp-json/wc/v3/orders?per_page=100&status=any`, {
+      headers: { Authorization: wooAuthHeader(consumerKey, consumerSecret) }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to fetch orders');
+    res.json({ ok: true, orders: data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/woocommerce/fetch-inventory', async (req, res) => {
+  const { storeUrl, consumerKey, consumerSecret } = req.body;
+  if (!storeUrl || !consumerKey || !consumerSecret) return res.status(400).json({ ok: false, error: 'Missing store URL or credentials' });
+  try {
+    const base = normalizeStoreUrl(storeUrl);
+    const response = await fetch(`${base}/wp-json/wc/v3/products?per_page=100`, {
+      headers: { Authorization: wooAuthHeader(consumerKey, consumerSecret) }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to fetch products');
+    res.json({ ok: true, products: (data || []).map(p => ({ sku: p.sku, stock_quantity: p.stock_quantity })) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------
 // 5. EMAIL INTEGRATION (Resend)
 // ---------------------------------------------------------
 
