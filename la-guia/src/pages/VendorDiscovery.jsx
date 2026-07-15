@@ -6,6 +6,14 @@ import { useAIUsage } from '../context/AIUsageContext.jsx';
 import { trustTagClass } from '../lib/format.js';
 import TabBar from '../components/TabBar.jsx';
 import { getPlan } from '../data/plans.js';
+import HoverPreview from '../components/HoverPreview.jsx';
+import { SkeletonRow } from '../components/Skeleton.jsx';
+
+const SORTS = {
+  Name: (a, b) => a.name.localeCompare(b.name),
+  Category: (a, b) => (a.category || '').localeCompare(b.category || ''),
+  Rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+};
 
 export const TRUST_LABELS = [
   { label: 'Imported by user', tone: 'neutral' },
@@ -67,7 +75,29 @@ function PriceTag({ value, size = 13 }) {
 
 function VendorRow({ v, onClick, onToggleFavorite, compareIds, onToggleCompare }) {
   const inCompare = compareIds.includes(v.id);
+  const hasHoverInfo = v.moq || v.lead_time || (v.certifications || []).length > 0 || (v.capabilities || []).length > 0 || (v.specialties || []).length > 0;
   return (
+    <HoverPreview width={260} content={hasHoverInfo ? (
+      <div style={{ fontSize: 12 }}>
+        {v.moq && <div style={{ marginBottom: 4 }}><strong>MOQ:</strong> {v.moq}</div>}
+        {v.lead_time && <div style={{ marginBottom: 6 }}><strong>Lead time:</strong> {v.lead_time}</div>}
+        {(v.certifications || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+            {v.certifications.map(c => <span key={c} className="tag tag-green" style={{ fontSize: 10 }}>{c}</span>)}
+          </div>
+        )}
+        {(v.capabilities || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+            {v.capabilities.map(c => <span key={c} className="tag tag-blue" style={{ fontSize: 10 }}>{c}</span>)}
+          </div>
+        )}
+        {(v.specialties || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {v.specialties.map(s => <span key={s} className="tag tag-neutral" style={{ fontSize: 10 }}>{s}</span>)}
+          </div>
+        )}
+      </div>
+    ) : null}>
     <div className="list-row" style={{ cursor: 'pointer' }} onClick={onClick}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
@@ -102,6 +132,7 @@ function VendorRow({ v, onClick, onToggleFavorite, compareIds, onToggleCompare }
         <span className={trustTagClass(TRUST_LABELS.find(t => t.label === v.label)?.tone)}>{v.label}</span>
       </div>
     </div>
+    </HoverPreview>
   );
 }
 
@@ -189,9 +220,10 @@ export default function VendorDiscovery() {
   const [compareRfqSending, setCompareRfqSending] = useState(false);
   const [compareRfqError, setCompareRfqError] = useState(null);
   const [compareRfqOverrideGate, setCompareRfqOverrideGate] = useState(false);
+  const [sortBy, setSortBy] = useState('Name');
 
-  const visible = vendors.filter(v => !v.blocked);
-  const favorites = vendors.filter(v => v.favorited && !v.blocked);
+  const visible = vendors.filter(v => !v.blocked).sort(SORTS[sortBy]);
+  const favorites = vendors.filter(v => v.favorited && !v.blocked).sort(SORTS[sortBy]);
   const blocked = vendors.filter(v => v.blocked);
   const compareVendors = compareIds.map(id => vendors.find(v => v.id === id)).filter(Boolean);
   const compareRfqProduct = techPackProducts.find(p => p.id === compareRfqForm.productId);
@@ -443,9 +475,14 @@ export default function VendorDiscovery() {
                   </div>
                 </form>
 
-                <div className="section-label">All vendors</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <div className="section-label" style={{ marginBottom: 0 }}>All vendors</div>
+                  <select className="form-select" style={{ width: 150 }} value={sortBy} onChange={e => setSortBy(e.target.value)} title="Sort by">
+                    {Object.keys(SORTS).map(s => <option key={s} value={s}>Sort: {s}</option>)}
+                  </select>
+                </div>
                 {loading ? (
-                  <div style={{ padding: 30, textAlign: 'center', color: 'var(--ink-3)' }}><i className="ph ph-circle-notch" /> Loading…</div>
+                  <div className="card" style={{ marginBottom: 24 }}>{Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)}</div>
                 ) : visible.length ? (
                   <div className="card" style={{ marginBottom: 24 }}>
                     {visible.map(v => <VendorRow key={v.id} v={v} onClick={() => navigate(`/vendors/${v.id}`)} onToggleFavorite={toggleFavorite} compareIds={compareIds} onToggleCompare={toggleCompare} />)}
