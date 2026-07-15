@@ -5,7 +5,7 @@ import { useProducts } from '../context/ProductsContext.jsx';
 import { useSales } from '../context/SalesContext.jsx';
 import { useProduction } from '../context/ProductionContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.js';
+import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';

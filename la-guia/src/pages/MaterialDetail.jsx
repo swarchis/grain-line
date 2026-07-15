@@ -9,7 +9,7 @@ import { PhotoPanel } from '../components/decor.jsx';
 import { useMaterials } from '../context/MaterialsContext.jsx';
 import { useVendors } from '../context/VendorsContext.jsx';
 import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
-import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.js';
+import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.jsx';
 import { usePinned } from '../context/PinnedContext.jsx';
 
 const TONE_BY_RISK = { green: 'sage', amber: 'gold', red: 'clay' };
