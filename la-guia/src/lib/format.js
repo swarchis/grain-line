@@ -35,8 +35,11 @@ export function currency(n) {
   return `$${n.toLocaleString('en-US')}`;
 }
 
+// Every caller already passes a 0-100 scale value (e.g. a margin computed
+// as (profit / price) * 100), not a 0-1 fraction — this used to multiply by
+// 100 again, so a real 65% margin rendered as "6500%".
 export function percent(n) {
-  return `${Math.round(n * 100)}%`;
+  return `${Math.round(n)}%`;
 }
 
 export function stageLink(stage, id) {

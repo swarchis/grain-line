@@ -11,6 +11,7 @@ export function ProductionProvider({ children }) {
   const [issuesByOrder, setIssuesByOrder] = useState({});
   const [updatesByOrder, setUpdatesByOrder] = useState({});
   const [paymentsByOrder, setPaymentsByOrder] = useState({}); // NEW
+  const [allPayments, setAllPayments] = useState([]); // brand-wide, for Financial Tools / Analytics
 
   const loadOrders = async () => {
     if (!activeBrand) return;
@@ -21,7 +22,7 @@ export function ProductionProvider({ children }) {
         .select('*, products(name), vendors(name)')
         .eq('brand_id', activeBrand.id)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setOrders(data || []);
     } catch (err) {
@@ -31,8 +32,20 @@ export function ProductionProvider({ children }) {
     }
   };
 
+  const loadAllPayments = async () => {
+    if (!activeBrand) { setAllPayments([]); return; }
+    const { data, error } = await supabase
+      .from('production_payments')
+      .select('*, production_orders(product_id, vendor_id)')
+      .eq('brand_id', activeBrand.id)
+      .order('paid_at', { ascending: true });
+    if (error) { console.error('Error loading brand payments:', error); return; }
+    setAllPayments(data || []);
+  };
+
   useEffect(() => {
     loadOrders();
+    loadAllPayments();
   }, [activeBrand]);
 
   const createOrder = async (orderData) => {
@@ -135,6 +148,7 @@ export function ProductionProvider({ children }) {
     }]).select().single();
     if (error) throw error;
     setPaymentsByOrder(prev => ({ ...prev, [orderId]: [data, ...(prev[orderId] || [])].sort((a,b) => new Date(b.paid_at) - new Date(a.paid_at)) }));
+    loadAllPayments();
     return data;
   };
 
@@ -142,6 +156,7 @@ export function ProductionProvider({ children }) {
     const { error } = await supabase.from('production_payments').delete().eq('id', paymentId);
     if (error) throw error;
     setPaymentsByOrder(prev => ({ ...prev, [orderId]: (prev[orderId] || []).filter(p => p.id !== paymentId) }));
+    setAllPayments(prev => prev.filter(p => p.id !== paymentId));
   };
 
   return (
@@ -150,6 +165,7 @@ export function ProductionProvider({ children }) {
       issuesByOrder, loadIssues, addIssue, toggleIssueResolved,
       updatesByOrder, loadUpdates, addUpdate,
       paymentsByOrder, loadPayments, addPayment, deletePayment, // NEW
+      allPayments, // brand-wide, for Financial Tools / Analytics
     }}>
       {children}
     </ProductionContext.Provider>

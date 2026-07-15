@@ -19,7 +19,8 @@ export const NAV_GROUPS = [
     { path: '/readiness', icon: 'ph-check-circle', label: 'Readiness Review', color: 'var(--c-finalcheck)', keywords: ['gate', 'checklist', 'factory ready'] },
   ] },
   { label: 'Analytics', items: [
-    { path: '/sales', icon: 'ph-chart-line-up', label: 'Dashboard', color: 'var(--c-analytics)', keywords: ['sales', 'revenue', 'shopify', 'break-even'] },
+    { path: '/sales', icon: 'ph-chart-line-up', label: 'Overview', color: 'var(--c-analytics)', keywords: ['sales', 'revenue', 'shopify', 'break-even', 'dashboard', 'vendors', 'manufacturing', 'inventory', 'marketing', 'reports', 'csv', 'export'] },
+    { path: '/financial', icon: 'ph-calculator', label: 'Financial Tools', color: 'var(--c-analytics)', keywords: ['cost', 'profit', 'margin', 'break-even', 'pricing', 'moq', 'cash flow', 'forecast', 'calculator'] },
   ] },
   { label: 'Tools', items: [
     { path: '/content', icon: 'ph-megaphone', label: 'Content Hub', color: 'var(--c-content)', keywords: ['social', 'posts', 'schedule'] },

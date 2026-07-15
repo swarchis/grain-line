@@ -46,6 +46,7 @@ import Sampling from './pages/Sampling.jsx';
 import SampleDetail from './pages/SampleDetail.jsx';
 import ReadinessReview from './pages/ReadinessReview.jsx';
 import SalesDashboard from './pages/SalesDashboard.jsx';
+import FinancialTools from './pages/FinancialTools.jsx';
 import ProductInsights from './pages/ProductInsights.jsx';
 import ContentHub from './pages/ContentHub.jsx';
 import Settings from './pages/Settings.jsx';
@@ -90,6 +91,7 @@ function AppShellInner() {
             <Route path="/production/:id" element={<ProductionOrderDetail />} />
             <Route path="/readiness" element={<ReadinessReview />} />
             <Route path="/sales" element={<SalesDashboard />} />
+            <Route path="/financial" element={<FinancialTools />} />
             <Route path="/products/:id/performance" element={<ProductInsights />} />
             <Route path="/content" element={<ContentHub />} />
             <Route path="/settings" element={<Settings />} />
