@@ -27,6 +27,19 @@ function normalizeWooOrder(o) {
   };
 }
 
+// Etsy access tokens expire hourly. Refreshes ~1 minute before expiry and
+// hands the new token back via onRefreshed so the caller can persist it
+// to store_connections — this module has no Supabase access itself, by
+// design (it stays a pure per-platform API adapter).
+async function ensureFreshEtsyToken(conn, onRefreshed) {
+  const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
+  if (expiresAt - Date.now() > 60 * 1000) return conn;
+  const { accessToken, refreshToken, expiresIn } = await postJSON('/api/etsy/refresh-token', { refreshToken: conn.refresh_token });
+  const refreshed = { ...conn, access_token: accessToken, refresh_token: refreshToken, token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString() };
+  if (onRefreshed) await onRefreshed(refreshed);
+  return refreshed;
+}
+
 export const platformAdapters = {
   woocommerce: {
     label: 'WooCommerce',
@@ -40,6 +53,19 @@ export const platformAdapters = {
     async fetchInventory(conn) {
       const { products } = await postJSON('/api/woocommerce/fetch-inventory', { storeUrl: conn.shop_domain, consumerKey: conn.api_key, consumerSecret: conn.access_token });
       return products || [];
+    },
+  },
+  etsy: {
+    label: 'Etsy',
+    async fetchOrders(conn, onRefreshed) {
+      const fresh = await ensureFreshEtsyToken(conn, onRefreshed);
+      const { receipts } = await postJSON('/api/etsy/fetch-orders', { shopId: fresh.shop_domain, accessToken: fresh.access_token });
+      return receipts || [];
+    },
+    async fetchInventory(conn, onRefreshed) {
+      const fresh = await ensureFreshEtsyToken(conn, onRefreshed);
+      const { listings } = await postJSON('/api/etsy/fetch-inventory', { shopId: fresh.shop_domain, accessToken: fresh.access_token });
+      return listings || [];
     },
   },
 };

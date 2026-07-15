@@ -43,13 +43,18 @@ export default function SalesDashboard() {
   const [wooConnecting, setWooConnecting] = useState(false);
   const [wooError, setWooError] = useState(null);
 
-  // 1. Catch OAuth Returns
+  const etsyConnection = connections.find(c => c.platform === 'etsy') || null;
+
+  // 1. Catch OAuth Returns (Shopify, Etsy — both use the same signed-state
+  // + single-use handoff-code flow, see api/index.js's OAuth handoff helper)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const success = params.get('shopify_success');
-    const error = params.get('shopify_error');
-    
-    if (success === 'true' && activeBrand) {
+    const shopifySuccess = params.get('shopify_success');
+    const shopifyError = params.get('shopify_error');
+    const etsySuccess = params.get('etsy_success');
+    const etsyError = params.get('etsy_error');
+
+    if (shopifySuccess === 'true' && activeBrand) {
       const handoffCode = params.get('handoff');
       const brandId = params.get('brandId');
 
@@ -71,8 +76,35 @@ export default function SalesDashboard() {
             window.history.replaceState({}, '', '/sales');
           });
       }
-    } else if (error === 'true') {
+    } else if (shopifyError === 'true') {
       alert("Failed to connect Shopify store.");
+      window.history.replaceState({}, '', '/sales');
+    } else if (etsySuccess === 'true' && activeBrand) {
+      const handoffCode = params.get('handoff');
+      const brandId = params.get('brandId');
+
+      if (brandId === activeBrand.id && handoffCode) {
+        consumeOAuthHandoff(handoffCode)
+          .then(({ shopId, accessToken, refreshToken, expiresIn }) => supabase.from('store_connections').upsert({
+            brand_id: activeBrand.id,
+            platform: 'etsy',
+            shop_domain: shopId,
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+          }, { onConflict: 'brand_id, platform' }))
+          .then(() => {
+            refreshSales();
+            window.history.replaceState({}, '', '/sales');
+            setTab('connections');
+          })
+          .catch(err => {
+            setSyncError(err.message);
+            window.history.replaceState({}, '', '/sales');
+          });
+      }
+    } else if (etsyError === 'true') {
+      alert("Failed to connect Etsy shop.");
       window.history.replaceState({}, '', '/sales');
     }
   }, [location.search, activeBrand]);
@@ -183,9 +215,35 @@ export default function SalesDashboard() {
     }
   };
 
+  // Etsy tokens expire hourly — fetchOrders refreshes automatically and
+  // reports the new token here so it gets persisted for next time.
+  const persistRefreshedEtsyToken = async (refreshed) => {
+    await supabase.from('store_connections').update({
+      access_token: refreshed.access_token,
+      refresh_token: refreshed.refresh_token,
+      token_expires_at: refreshed.token_expires_at,
+    }).eq('id', etsyConnection.id);
+  };
+
+  const syncEtsy = async () => {
+    if (!etsyConnection) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const orders = await platformAdapters.etsy.fetchOrders(etsyConnection, persistRefreshedEtsyToken);
+      await aggregateAndUpsertOrders(orders, 'etsy');
+      await refreshSales();
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const syncAll = async () => {
     if (connection) await syncSales();
     if (wooConnection) await syncWooCommerce();
+    if (etsyConnection) await syncEtsy();
   };
 
   const handleWooConnect = async (e) => {
@@ -413,7 +471,32 @@ export default function SalesDashboard() {
               </form>
             )}
 
-            <EmptyState icon="ph-plug" color="var(--c-analytics)" title="Etsy and TikTok Shop coming up next" sub="A few more storefronts will connect here as they're built out." />
+            {etsyConnection ? (
+              <div className="card-raised" style={{ marginBottom: 20 }}>
+                <div className="card-header">
+                  <span className="card-title">Etsy</span>
+                  <span className="tag tag-green">Connected</span>
+                </div>
+                <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13.5, color: 'var(--ink-2)' }}>Shop #{etsyConnection.shop_domain}</div>
+                  <button className="btn btn-sm" onClick={() => disconnectStore('etsy')}>Disconnect</button>
+                </div>
+              </div>
+            ) : (
+              <div className="card-raised" style={{ marginBottom: 20 }}>
+                <div className="card-header">
+                  <span className="card-title">Connect Etsy</span>
+                </div>
+                <div className="card-body">
+                  <button className="btn btn-primary" onClick={() => { window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/etsy/auth?brandId=${activeBrand?.id}`; }}>
+                    <i className="ph ph-arrow-square-out" /> Connect Etsy Shop
+                  </button>
+                  <div className="form-hint" style={{ marginTop: 8 }}>You'll be redirected to Etsy to authorize Atelier. Needs an Etsy Developer app (self-serve at developer.etsy.com) — its keystring goes in `api/.env` as `ETSY_KEYSTRING`.</div>
+                </div>
+              </div>
+            )}
+
+            <EmptyState icon="ph-plug" color="var(--c-analytics)" title="TikTok Shop coming up next" sub="One more storefront will connect here as it's built out." />
           </>
         )}
       </div>

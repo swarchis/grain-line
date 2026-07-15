@@ -874,6 +874,151 @@ app.post('/api/woocommerce/fetch-inventory', async (req, res) => {
 });
 
 // ---------------------------------------------------------
+// 4C. ETSY INTEGRATION
+// ---------------------------------------------------------
+// Etsy Open API v3 requires OAuth 2.0 with PKCE (mandatory, not optional
+// like most providers) — the client generates a random code_verifier,
+// sends its SHA-256 hash (code_challenge) with the auth request, then
+// proves it knew the original by sending code_verifier back at token
+// exchange. PKCE verifiers are short-lived and single-use per attempt, so
+// they're kept in the same in-memory pattern as the OAuth handoff store
+// above (this backend has no database of its own).
+const etsyPkceStore = new Map(); // state -> { verifier, expiresAt }
+const PKCE_TTL_MS = 10 * 60 * 1000; // Etsy's own consent screen can take a few minutes
+
+function base64url(buffer) {
+  return buffer.toString('base64url');
+}
+
+app.get('/api/etsy/auth', (req, res) => {
+  const { brandId } = req.query;
+  if (!brandId) return res.status(400).send('Missing brandId');
+  if (!process.env.ETSY_KEYSTRING) return res.status(400).send('ETSY_KEYSTRING is missing from api/.env.');
+
+  const state = signOAuthState(brandId);
+  const verifier = base64url(crypto.randomBytes(32));
+  etsyPkceStore.set(state, { verifier, expiresAt: Date.now() + PKCE_TTL_MS });
+  const challenge = base64url(crypto.createHash('sha256').update(verifier).digest());
+
+  const redirectUri = `${API_URL}/api/etsy/callback`;
+  const scopes = 'transactions_r listings_r shops_r';
+  const authUrl = `https://www.etsy.com/oauth/connect?response_type=code&client_id=${process.env.ETSY_KEYSTRING}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`;
+  res.redirect(authUrl);
+});
+
+app.get('/api/etsy/callback', async (req, res) => {
+  const { code, state } = req.query;
+  const brandId = verifyOAuthState(state);
+  const pkce = state && etsyPkceStore.get(state);
+  etsyPkceStore.delete(state);
+
+  if (!code || !brandId || !pkce || pkce.expiresAt < Date.now()) {
+    return res.redirect(`${APP_URL}/sales?etsy_error=true`);
+  }
+
+  try {
+    const redirectUri = `${API_URL}/api/etsy/callback`;
+    const tokenRes = await fetch('https://api.etsy.com/v3/public/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: process.env.ETSY_KEYSTRING,
+        redirect_uri: redirectUri,
+        code,
+        code_verifier: pkce.verifier,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) throw new Error(tokenData.error_description || 'Failed to get token');
+
+    // Etsy access tokens are formatted "{numeric_user_id}.{token}" — the
+    // user id is needed to look up which shop they own.
+    const userId = tokenData.access_token.split('.')[0];
+    const shopsRes = await fetch(`https://openapi.etsy.com/v3/application/users/${userId}/shops`, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}`, 'x-api-key': process.env.ETSY_KEYSTRING },
+    });
+    const shopsData = await shopsRes.json();
+    if (!shopsRes.ok || !shopsData.shop_id) throw new Error('Could not find an Etsy shop for this account');
+
+    const handoffCode = createOAuthHandoff({
+      platform: 'etsy',
+      shopId: String(shopsData.shop_id),
+      shopName: shopsData.shop_name,
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresIn: tokenData.expires_in,
+      brandId,
+    });
+    res.redirect(`${APP_URL}/sales?etsy_success=true&handoff=${handoffCode}&brandId=${brandId}`);
+  } catch (err) {
+    console.error('Etsy OAuth Error:', err);
+    res.redirect(`${APP_URL}/sales?etsy_error=true`);
+  }
+});
+
+app.post('/api/etsy/refresh-token', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ ok: false, error: 'Missing refresh token' });
+  try {
+    const tokenRes = await fetch('https://api.etsy.com/v3/public/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'refresh_token', client_id: process.env.ETSY_KEYSTRING, refresh_token: refreshToken }),
+    });
+    const data = await tokenRes.json();
+    if (!tokenRes.ok) throw new Error(data.error_description || 'Failed to refresh token');
+    res.json({ ok: true, accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+// Etsy prices come back as Money objects ({amount, divisor, currency_code}
+// — real value is amount/divisor) and each receipt's line items live in
+// a nested `transactions` array — normalized here, server-side, so the
+// frontend adapter gets the same flat { created_at, total_price,
+// line_items } shape every other platform already produces.
+function etsyMoney(m) {
+  return m ? m.amount / m.divisor : 0;
+}
+
+app.post('/api/etsy/fetch-orders', async (req, res) => {
+  const { shopId, accessToken } = req.body;
+  if (!shopId || !accessToken) return res.status(400).json({ ok: false, error: 'Missing shopId or accessToken' });
+  try {
+    const response = await fetch(`https://openapi.etsy.com/v3/application/shops/${shopId}/receipts?limit=100`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'x-api-key': process.env.ETSY_KEYSTRING },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch receipts');
+    const receipts = (data.results || []).map(r => ({
+      created_at: new Date(r.created_timestamp * 1000).toISOString(),
+      total_price: etsyMoney(r.grandtotal),
+      line_items: (r.transactions || []).map(t => ({ sku: t.sku, price: etsyMoney(t.price), quantity: t.quantity })),
+    }));
+    res.json({ ok: true, receipts });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/etsy/fetch-inventory', async (req, res) => {
+  const { shopId, accessToken } = req.body;
+  if (!shopId || !accessToken) return res.status(400).json({ ok: false, error: 'Missing shopId or accessToken' });
+  try {
+    const response = await fetch(`https://openapi.etsy.com/v3/application/shops/${shopId}/listings?limit=100`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'x-api-key': process.env.ETSY_KEYSTRING },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch listings');
+    res.json({ ok: true, listings: (data.results || []).map(l => ({ sku: (l.skus || [])[0], stock_quantity: l.quantity })) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------
 // 5. EMAIL INTEGRATION (Resend)
 // ---------------------------------------------------------
 
