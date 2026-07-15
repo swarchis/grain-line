@@ -9,6 +9,7 @@ import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
 import TabBar from '../components/TabBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import Breadcrumbs from '../components/Breadcrumbs.jsx';
 
 const TABS = [
   { key: 'financial', label: 'Financial Model', icon: 'ph-calculator' },
@@ -148,6 +149,7 @@ export default function ProductInsights() {
       <div className="topbar">
         <div className="topbar-left">
           <div>
+            <Breadcrumbs items={[{ label: 'Home', path: '/' }, { label: 'Overview', path: '/sales' }, { label: product.name }]} />
             <div className="page-eyebrow" style={{ color: 'var(--c-analytics)' }}>Analytics & Sales</div>
             <h1 className="page-title">{product.name}</h1>
           </div>

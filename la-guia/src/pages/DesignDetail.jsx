@@ -16,6 +16,8 @@ import VariantsTab from '../components/design-studio/VariantsTab.jsx';
 import HistoryTab from '../components/design-studio/HistoryTab.jsx';
 import SkuVariantsTab from '../components/design-studio/SkuVariantsTab.jsx';
 import { blobToBase64 } from '../lib/designImages.js';
+import Breadcrumbs from '../components/Breadcrumbs.jsx';
+import Splitter from '../components/Splitter.jsx';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const DESIGN_STATUSES = ['Sketching', 'Refining', 'Ready'];
@@ -58,6 +60,8 @@ export default function DesignDetail() {
   const [tagDraft, setTagDraft] = useState('');
   const [tagType, setTagType] = useState('composition');
   const [savingStatus, setSavingStatus] = useState(false);
+  const [splitView, setSplitView] = useState(false);
+  const [splitWidth, setSplitWidth] = useState(560);
   const [duplicating, setDuplicating] = useState(false);
   const [findingVendors, setFindingVendors] = useState(false);
   const [tab, setTab] = useState('canvas');
@@ -70,6 +74,9 @@ export default function DesignDetail() {
   const product = products.find(p => p.id === id);
   const design = designs[id];
   const uploadedFile = getUploadedFile(id);
+  // Canvas + AI Studio used to be mutually-exclusive tabs — this is the one
+  // place a real side-by-side split exists between them.
+  const showSplitStudio = splitView && (tab === 'canvas' || tab === 'ai-studio');
 
   // Moodboard/palette/variants live on the `designs` row but aren't part of
   // ProductsContext's designs map (kept lean for what every page needs) —
@@ -340,12 +347,18 @@ export default function DesignDetail() {
       <div className="topbar">
         <div className="topbar-left">
           <div>
+            <Breadcrumbs items={[{ label: 'Home', path: '/' }, { label: 'Design Studio', path: '/design' }, { label: product.name }]} />
             <div className="page-eyebrow" style={{ color: 'var(--c-design)' }}>Design Studio</div>
             <h1 className="page-title">{product.name}</h1>
           </div>
           <div className="page-sub">{product.category}</div>
         </div>
         <div className="topbar-right">
+          {(tab === 'canvas' || tab === 'ai-studio') && (
+            <button className="btn btn-sm" onClick={() => setSplitView(s => !s)} title={splitView ? 'Show one panel at a time' : 'Show canvas and AI Studio side by side'}>
+              <i className={`ph ${splitView ? 'ph-columns' : 'ph-square-split-horizontal'}`} /> {splitView ? 'Split view on' : 'Split view'}
+            </button>
+          )}
           <button className="canvas-icon-btn" onClick={() => setConfirmingDelete(true)} title="Delete design" style={{ color: 'var(--red)' }}>
             <i className="ph ph-trash" />
           </button>
@@ -383,8 +396,9 @@ export default function DesignDetail() {
 
         {/* Kept mounted (display:none, not unmounted) when other tabs are active so
             the Photopea iframe never reloads and in-progress canvas work survives
-            switching to AI Studio/Inspiration/etc. and back. */}
-        <div style={{ display: tab === 'canvas' ? 'block' : 'none' }}>
+            switching to AI Studio/Inspiration/etc. and back. Also shown while on the
+            AI Studio tab in split view, since the canvas needs to render beside it. */}
+        <div style={{ display: (tab === 'canvas' || showSplitStudio) ? 'block' : 'none' }}>
         {analysis && (
           <div style={{ maxWidth: 1080, marginBottom: 16 }} id="analysis-result-card">
             <div className="card-raised">
@@ -413,8 +427,8 @@ export default function DesignDetail() {
           </div>
         )}
 
-        <div style={{ maxWidth: 1080, display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
-          <div style={{ flex: 1, minWidth: 0, height: expanded ? 0 : 600 }}>
+        <div style={{ maxWidth: showSplitStudio ? 'none' : 1080, display: 'flex', gap: showSplitStudio ? 0 : 16, alignItems: 'flex-start', marginBottom: 16 }}>
+          <div style={{ flex: showSplitStudio ? '0 0 auto' : 1, width: showSplitStudio ? splitWidth : undefined, minWidth: 0, height: expanded ? 0 : 600 }}>
             <div className={`canvas-panel ${expanded ? 'expanded' : ''}`} style={{ '--cp-accent': 'var(--c-design)' }}>
               <div className="canvas-panel-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -448,6 +462,23 @@ export default function DesignDetail() {
             </div>
           </div>
 
+          {showSplitStudio ? (
+            <>
+              <Splitter width={splitWidth} onWidthChange={setSplitWidth} min={360} max={900} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AIStudioTab
+                  productId={id}
+                  onCapture={captureCanvasBase64}
+                  onApplyToCanvas={applyResultToCanvas}
+                  onAddLayer={addLayerToCanvas}
+                  canUseAI={canUseAI}
+                  aiRemaining={aiRemaining}
+                  logUsage={logUsage}
+                  onVersionSaved={() => setHistoryRefreshKey(k => k + 1)}
+                />
+              </div>
+            </>
+          ) : (
           <div style={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card-raised">
               <div className="card-header"><span className="card-title">Details</span></div>
@@ -519,10 +550,11 @@ export default function DesignDetail() {
               </div>
             </div>
           </div>
+          )}
         </div>
         </div>
 
-        {tab === 'ai-studio' && (
+        {tab === 'ai-studio' && !showSplitStudio && (
           <AIStudioTab
             productId={id}
             onCapture={captureCanvasBase64}

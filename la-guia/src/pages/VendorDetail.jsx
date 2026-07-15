@@ -9,6 +9,7 @@ import { TRUST_LABELS, ONBOARDING_STAGES } from './VendorDiscovery.jsx';
 import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import CommentsPanel from '../components/CommentsPanel.jsx';
+import Breadcrumbs from '../components/Breadcrumbs.jsx';
 
 const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'launched'];
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
@@ -262,6 +263,7 @@ export default function VendorDetail() {
       <div className="topbar">
         <div className="topbar-left">
           <div>
+            <Breadcrumbs items={[{ label: 'Home', path: '/' }, { label: 'Vendors', path: '/vendors' }, { label: vendor.name }]} />
             <div className="page-eyebrow" style={{ color: 'var(--c-vendors)' }}>Vendor</div>
             <h1 className="page-title">{vendor.name}</h1>
           </div>

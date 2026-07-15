@@ -11,6 +11,7 @@ import { useVendors } from '../context/VendorsContext.jsx';
 import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
 import { useAutosave, AutosaveIndicator } from '../lib/useAutosave.jsx';
 import { usePinned } from '../context/PinnedContext.jsx';
+import Breadcrumbs from '../components/Breadcrumbs.jsx';
 
 const TONE_BY_RISK = { green: 'sage', amber: 'gold', red: 'clay' };
 const TABS = [
@@ -120,6 +121,7 @@ export default function MaterialDetail() {
       <div className="topbar">
         <div className="topbar-left">
           <div>
+            <Breadcrumbs items={[{ label: 'Home', path: '/' }, { label: 'Materials', path: '/materials' }, { label: material.name }]} />
             <div className="page-eyebrow" style={{ color: 'var(--c-materials)' }}>Material Intelligence</div>
             <h1 className="page-title">{material.name}</h1>
           </div>
