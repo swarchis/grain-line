@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
 import EditableSectionTable from '../components/EditableSectionTable.jsx';
 import TechPackQuestionnaire from '../components/TechPackQuestionnaire.jsx';
+import CommentsPanel from '../components/CommentsPanel.jsx';
 import { exportTechPackExcel } from '../lib/techPackExcel.js';
 
 const TABS = [
@@ -754,6 +755,10 @@ export default function TechPackDetail() {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <CommentsPanel brandId={activeBrand?.id} entityType="tech_pack" entityId={id} />
                   </div>
                 </div>
               )}

@@ -17,6 +17,7 @@ import { SalesProvider } from './context/SalesContext.jsx';
 import { ContentProvider } from './context/ContentContext.jsx';
 import { ChatProvider } from './context/ChatContext.jsx';
 import { InfluencersProvider } from './context/InfluencersContext.jsx';
+import { PinnedProvider } from './context/PinnedContext.jsx';
 import OnboardingOverlay from './components/OnboardingOverlay.jsx';
 import ShortcutsHelpModal from './components/ShortcutsHelpModal.jsx';
 import FloatingChat from './components/FloatingChat.jsx';
@@ -134,6 +135,7 @@ export default function App() {
             <SalesProvider>
             <ContentProvider>
             <InfluencersProvider>
+            <PinnedProvider>
               <BrowserRouter>
                 <Routes>
                   <Route path="/welcome" element={<Welcome />} />
@@ -150,6 +152,7 @@ export default function App() {
                   } />
                 </Routes>
               </BrowserRouter>
+            </PinnedProvider>
             </InfluencersProvider>
             </ContentProvider>
             </SalesProvider>

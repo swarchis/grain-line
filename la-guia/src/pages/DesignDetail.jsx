@@ -347,9 +347,10 @@ export default function DesignDetail() {
           <div style={{ maxWidth: 1080, marginBottom: 16 }} id="analysis-result-card">
             <div className="card-raised">
               <div className="card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-                <span className="card-title">AI Design Analysis</span>
+                <span className="card-title">AI Design Critique</span>
               </div>
               <div className="card-body">
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 14 }}>A real critique of this exact canvas snapshot — not general advice. Score and notes come straight from Gemini looking at the image, nothing pre-scripted.</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                   {snapshot && <img src={snapshot} alt="Captured canvas snapshot" style={{ width: 64, height: 64, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1.5px solid var(--border-2)', flexShrink: 0 }} />}
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 30, fontWeight: 700, color: analysis.score >= 80 ? 'var(--green)' : 'var(--amber)' }}>

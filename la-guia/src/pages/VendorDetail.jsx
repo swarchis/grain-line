@@ -8,6 +8,7 @@ import { trustTagClass } from '../lib/format.js';
 import { TRUST_LABELS, ONBOARDING_STAGES } from './VendorDiscovery.jsx';
 import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import CommentsPanel from '../components/CommentsPanel.jsx';
 
 const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'launched'];
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
@@ -589,6 +590,10 @@ export default function VendorDetail() {
             ))}
           </div>
         ) : <EmptyState icon="ph-file-text" color="var(--c-vendors)" title="No quotes yet" sub="Requested and received quotes with this vendor will show up here." />}
+
+        <div style={{ marginTop: 24 }}>
+          <CommentsPanel brandId={activeBrand?.id} entityType="vendor" entityId={id} />
+        </div>
       </div>
     </>
   );

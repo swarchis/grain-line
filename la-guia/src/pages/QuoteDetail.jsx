@@ -6,6 +6,7 @@ import { useAIUsage } from '../context/AIUsageContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import EmptyState from '../components/EmptyState.jsx';
 import CostBreakdownWheel from '../components/CostBreakdownWheel.jsx';
+import CommentsPanel from '../components/CommentsPanel.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -55,7 +56,7 @@ export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { quotes, vendors, updateQuote, negotiationsByQuote, loadNegotiations, addNegotiation } = useVendors();
-  const { products } = useProducts();
+  const { products, activeBrand } = useProducts();
   const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
 
   const quote = quotes.find(q => q.id === id);
@@ -456,6 +457,10 @@ export default function QuoteDetail() {
         {canUseAI && (economics || levers) && (
           <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'right', marginTop: -14 }}>{aiRemaining} AI estimates left this month</div>
         )}
+
+        <div style={{ marginTop: 24 }}>
+          <CommentsPanel brandId={activeBrand?.id} entityType="quote" entityId={id} />
+        </div>
       </div>
     </>
   );
