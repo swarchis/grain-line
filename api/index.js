@@ -721,7 +721,6 @@ app.post('/api/subscription-status', async (req, res) => {
 //      see the architecture note above). A short-lived, single-use code
 //      swap keeps that handoff out of the URL/history entirely.
 // ---------------------------------------------------------
-const crypto = require('crypto');
 const oauthHandoffStore = new Map(); // code -> { payload, expiresAt }
 const OAUTH_HANDOFF_TTL_MS = 2 * 60 * 1000;
 
