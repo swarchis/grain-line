@@ -1,43 +1,48 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
 import { STAGES } from '../../data/mockData.js';
 import { PLANS } from '../../data/plans.js';
 
 /* ───────────────────────────────────────────────────────────────────────────
-   "Draft Sheet" — the Atelier landing page built as a technical tech-pack drawing.
+   "The Cutting Table" — a real 3D scene built from actual CSS perspective and
+   transforms (no WebGL, no new dependency), not a flat page with animations
+   sprinkled on top.
 
-   A deliberate break from the previous warm-cream / serif / terracotta hero.
-   The subject here is a *production* tool — its native artifact is the tech
-   pack: a precise flat sketch covered in dimension callouts, grade rules, and a
-   title block. So the page is built like one. Cool drafting-bone paper,
-   near-black ink, and the petrol blue already living in the app's favicon
-   (#2F5D7C) as the single accent. The recurring mark is the grainline symbol —
-   the arrow a pattern-maker draws to align a piece with the fabric's grain,
-   a real fixture of any atelier's cutting table — used as the structural
-   device, plus a garment flat that draws itself with animated dimension callouts.
-
-   Palette + type are hardcoded here (not the app's theme vars) so the page
-   renders identically regardless of light/dark app state on the auth route.
+   The subject is still a production tool, but its native artifact — the flat
+   pattern — is reimagined as what it actually is right before a garment gets
+   sewn: pieces lifted off the table and fanned out in space, each its own
+   card with a grainline and cutting notches, tilting toward the cursor like
+   you're leaning over the table yourself. A floating instrument reads the
+   grain angle live off your pointer position — the brand's own namesake
+   mark turned into the one genuinely interactive HUD element, not a
+   decorative rainbow dial. Everything else on the page stays disciplined:
+   the same technical drafting vocabulary (title blocks, dimension ticks,
+   mono captions) as before, just lit for depth instead of flattened on
+   cream paper. Dark ink ground, a thread-holographic accent family (blue →
+   violet → coral → gold, like light catching grosgrain) used sparingly —
+   card edges, the compass ring, one CTA — never as a full-bleed rainbow.
 ─────────────────────────────────────────────────────────────────────────── */
 
 const C = {
-  sheet: '#E7E8E2',
-  sheet2: '#EFF0EB',
-  panel: '#F4F4EF',
-  ink: '#15171B',
-  ink2: '#565B63',
-  ink3: '#8A8F96',
-  line: '#CDCFC8',
-  line2: '#B7BAB1',
-  blue: '#2F5D7C',
-  blueDeep: '#20455E',
-  chalk: '#BF3F2E',
-  cream: '#E9EAE4',
+  ink: '#0A0C11',
+  ink2: '#12151D',
+  ink3: '#1A1E29',
+  line: 'rgba(244,242,236,0.10)',
+  lineBright: 'rgba(244,242,236,0.22)',
+  paper: '#F4F2EC',
+  paperDim: '#9CA1AE',
+  paperFaint: '#5B6070',
+  blue: '#6BA8DE',
+  violet: '#A98CF5',
+  coral: '#FF8A6B',
+  gold: '#F0C56A',
 };
+const HOLO = `linear-gradient(115deg, ${C.blue}, ${C.violet} 35%, ${C.coral} 68%, ${C.gold} 100%)`;
 const DISPLAY = "'Archivo', system-ui, sans-serif";
 const MONO = "'Space Mono', ui-monospace, monospace";
 const BODY = "'Inter', system-ui, sans-serif";
+const SERIF = "'Newsreader', Georgia, serif";
 
 const FEATURES = [
   { n: '01', title: 'AI Design Studio', text: 'Sketch, upload a reference, or generate a starting silhouette — then edit it on the canvas: recolor, swap fabric, build a mockup.' },
@@ -50,17 +55,10 @@ const FEATURES = [
   { n: '08', title: 'Team & AI Assistant', text: 'Group chats with your team plus a personal assistant grounded in your own brand data — one button, on every page.' },
 ];
 
-const CALLOUTS = [
-  { at: [200, 118], to: [372, 120], n: '01', label: 'AI drafts the tech pack' },
-  { at: [206, 200], to: [372, 196], n: '02', label: 'Readiness scored 0–100' },
-  { at: [262, 250], to: [372, 272], n: '03', label: 'Sourced & quoted' },
-  { at: [200, 372], to: [372, 348], n: '04', label: 'Sampled → shipped' },
-];
-
-/* The grainline symbol: a directional line capped with an arrowhead at each
-   end — exactly the mark a pattern-maker draws to align a piece with the grain
-   of the fabric. It is the brand's namesake, so it earns its place as the
-   recurring structural device rather than a decorative icon. */
+/* The grainline symbol — the mark a pattern-maker draws on every cut piece
+   to align it with the fabric's grain. The brand's namesake, so it earns
+   its place as the recurring device (and, in the hero, becomes a literal
+   working instrument rather than a logo). */
 function Grainline({ h = 34, color = C.blue, stroke = 2 }) {
   const w = h * 0.36;
   return (
@@ -70,7 +68,7 @@ function Grainline({ h = 34, color = C.blue, stroke = 2 }) {
   );
 }
 
-function CornerMarks({ color = C.line2 }) {
+function CornerMarks({ color = C.lineBright }) {
   const L = ({ style }) => (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ position: 'absolute', ...style }} aria-hidden>
       <path d="M1 1 H16 M1 1 V16" stroke={color} strokeWidth="1.25" />
@@ -86,95 +84,189 @@ function CornerMarks({ color = C.line2 }) {
   );
 }
 
-/* The hero: one self-contained SVG "drawing sheet" — frame, registration
-   marks, a faint grid, an adapted scanner beam, a crewneck flat that draws
-   itself, the grainline mark placed on the body, dimension callouts, and a
-   title block. Everything lives in one viewBox so it scales cleanly. */
-function DraftPanel() {
+/* ── Pattern pieces — simplified, stylized technical flats, one per garment
+   piece, each carrying its own grainline arrow and cutting notches ──────── */
+function PieceChrome({ label, children, accent }) {
+  return (
+    <>
+      {children}
+      <text x="50%" y="98%" textAnchor="middle" fontFamily={MONO} fontSize="8.5" letterSpacing="0.06em" fill={C.paperDim}>{label}</text>
+    </>
+  );
+}
+
+function FrontPiece() {
+  return (
+    <svg viewBox="0 0 160 200" width="100%" style={{ display: 'block', overflow: 'visible' }} aria-hidden>
+      <path d="M50 10 Q80 22 110 10 L118 12 Q128 40 150 66 L134 78 Q122 54 112 46 L118 186 L42 186 L48 46 Q38 54 26 78 L10 66 Q32 40 42 12 Z"
+        fill="rgba(107,168,222,0.07)" stroke={C.paper} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M70 92 L80 112 L90 92" fill="none" stroke={C.paperDim} strokeWidth="1" />
+      <path d="M80 58 V150 M74 66 L80 56 L86 66 M74 142 L80 152 L86 142" stroke={C.blue} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M46 60 L54 66 M114 60 L106 66" stroke={C.paperDim} strokeWidth="1" />
+      <PieceChrome label="FRONT · CUT 1" />
+    </svg>
+  );
+}
+function BackPiece() {
+  return (
+    <svg viewBox="0 0 150 190" width="100%" style={{ display: 'block', overflow: 'visible' }} aria-hidden>
+      <path d="M45 8 Q75 4 105 8 L112 12 Q124 38 144 62 L128 74 Q118 50 108 44 L112 178 L38 178 L42 44 Q32 50 22 74 L6 62 Q26 38 38 12 Z"
+        fill="rgba(169,140,245,0.07)" stroke={C.paper} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M75 14 L75 178" stroke={C.paperFaint} strokeWidth="1" strokeDasharray="2 5" />
+      <path d="M52 58 V138 M46 66 L52 56 L58 66 M46 130 L52 140 L58 130" stroke={C.violet} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <PieceChrome label="BACK · CUT 1" />
+    </svg>
+  );
+}
+function SleevePiece() {
+  return (
+    <svg viewBox="0 0 140 170" width="100%" style={{ display: 'block', overflow: 'visible' }} aria-hidden>
+      <path d="M70 4 Q120 20 128 60 L108 74 Q98 54 88 48 L96 156 L44 156 L52 48 Q42 54 32 74 L12 60 Q20 20 70 4 Z"
+        fill="rgba(255,138,107,0.07)" stroke={C.paper} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M70 46 V132 M64 54 L70 44 L76 54 M64 124 L70 134 L76 124" stroke={C.coral} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M56 50 L62 56 M84 50 L78 56" stroke={C.paperDim} strokeWidth="1" />
+      <PieceChrome label="SLEEVE · CUT 2" />
+    </svg>
+  );
+}
+function CollarPiece() {
+  return (
+    <svg viewBox="0 0 170 76" width="100%" style={{ display: 'block', overflow: 'visible' }} aria-hidden>
+      <path d="M10 40 Q85 -6 160 40 L160 58 Q85 18 10 58 Z"
+        fill="rgba(240,197,106,0.08)" stroke={C.paper} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M32 46 H138 M40 40 L30 46 L40 52 M130 40 L140 46 L130 52" stroke={C.gold} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <PieceChrome label="COLLAR · CUT 1" />
+    </svg>
+  );
+}
+
+const PIECES = [
+  { key: 'front', Comp: FrontPiece, top: '4%', left: '46%', z: 60, baseRotY: -12, baseRotZ: -4, w: 168, depth: 1.4 },
+  { key: 'back', Comp: BackPiece, top: '0%', left: '73%', z: 10, baseRotY: 9, baseRotZ: 3, w: 138, depth: 0.7 },
+  { key: 'sleeve', Comp: SleevePiece, top: '42%', left: '64%', z: 100, baseRotY: -16, baseRotZ: 6, w: 118, depth: 1.9 },
+  { key: 'collar', Comp: CollarPiece, top: '58%', left: '48%', z: 140, baseRotY: 13, baseRotZ: -7, w: 146, depth: 2.4 },
+];
+
+function PatternCard({ piece, px, py }) {
+  const { Comp, top, left, z, baseRotY, baseRotZ, w, depth } = piece;
+  const x = useTransform(px, v => v * depth * 14);
+  const y = useTransform(py, v => v * depth * 10);
+  return (
+    <motion.div
+      className="ds-piece"
+      style={{
+        position: 'absolute', top, left, width: w, x, y,
+        transform: `translateZ(${z}px) rotateY(${baseRotY}deg) rotateZ(${baseRotZ}deg)`,
+        transformStyle: 'preserve-3d',
+      }}
+    >
+      <div className="ds-piece-card"><Comp /></div>
+    </motion.div>
+  );
+}
+
+/* ── Grain compass — the one true HUD instrument. Reads a live grain angle
+   straight off pointer position; nothing about the number is invented. ──── */
+function GrainCompass({ angle, active }) {
+  const rad = (angle * Math.PI) / 180;
+  const nx = 42 + Math.sin(rad) * 30;
+  const ny = 42 - Math.cos(rad) * 30;
+  const ticks = Array.from({ length: 24 }, (_, i) => i * 15);
+  return (
+    <div className="ds-compass">
+      <div className="ds-compass-label">
+        <span className="ds-compass-dot" style={{ background: active ? C.blue : C.paperFaint }} />
+        MAIN GRAINLINE
+      </div>
+      <svg viewBox="0 0 84 84" width="120" height="120" aria-hidden>
+        <circle cx="42" cy="42" r="40" fill="rgba(244,242,236,0.03)" stroke={C.line} strokeWidth="1" />
+        <circle cx="42" cy="42" r="30" fill="none" stroke={C.line} strokeWidth="1" />
+        {ticks.map(t => {
+          const r = (t * Math.PI) / 180;
+          const big = t % 90 === 0;
+          const r1 = big ? 33 : 36.5;
+          return (
+            <line key={t} x1={42 + Math.sin(r) * r1} y1={42 - Math.cos(r) * r1} x2={42 + Math.sin(r) * 40} y2={42 - Math.cos(r) * 40}
+              stroke={big ? C.paperDim : C.line} strokeWidth={big ? 1.2 : 0.8} />
+          );
+        })}
+        <line x1="42" y1="42" x2={nx} y2={ny} stroke={C.blue} strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx={nx} cy={ny} r="2.4" fill={C.blue} />
+        <circle cx="42" cy="42" r="2.5" fill={C.paper} />
+      </svg>
+      <div className="ds-compass-read">GRAIN <b>{angle.toFixed(1)}°</b></div>
+    </div>
+  );
+}
+
+/* ── The 3D hero scene ─────────────────────────────────────────────────── */
+function Hero3D({ navigate }) {
   const reduce = useReducedMotion();
-  const draw = reduce
-    ? { initial: { pathLength: 1 }, animate: { pathLength: 1 } }
-    : { initial: { pathLength: 0 }, animate: { pathLength: 1 } };
-  const drawT = (d = 0) => ({ duration: 1.5, ease: 'easeInOut', delay: d });
-  const calloutBase = reduce ? 0 : 1.5;
+  const heroRef = useRef(null);
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const zero = useMotionValue(0);
+  const springX = useSpring(px, { stiffness: 60, damping: 16, mass: 0.6 });
+  const springY = useSpring(py, { stiffness: 60, damping: 16, mass: 0.6 });
+  const rotateY = useTransform(springX, v => v * 9);
+  const rotateX = useTransform(springY, v => v * -7);
+  const headX = useTransform(springX, v => v * -6);
+  const headY = useTransform(springY, v => v * -4);
+  const [angle, setAngle] = useState(24);
+  const [active, setActive] = useState(false);
+  const raf = useRef(null);
+
+  const handleMove = (e) => {
+    if (reduce) return;
+    const rect = heroRef.current.getBoundingClientRect();
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+    px.set(nx);
+    py.set(ny);
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(() => {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let deg = (Math.atan2(e.clientX - cx, -(e.clientY - cy)) * 180) / Math.PI;
+      if (deg < 0) deg += 360;
+      setAngle(deg);
+      setActive(true);
+    });
+  };
+  const handleLeave = () => {
+    px.set(0); py.set(0); setActive(false);
+  };
+
+  useEffect(() => () => raf.current && cancelAnimationFrame(raf.current), []);
 
   return (
-    <svg viewBox="0 0 600 560" width="100%" style={{ display: 'block' }} role="img" aria-label="Technical flat sketch of a crewneck with dimension callouts">
-      <defs>
-        <pattern id="grid20" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M20 0 H0 V20" fill="none" stroke={C.line} strokeWidth="0.75" opacity="0.7" />
-        </pattern>
-        {/* Scanner beam — adapted from 21st.dev "Background Grid Beam", recolored
-            from its cyan/violet default to the petrol blueprint accent and
-            slowed to read as a drafting scanner rather than a neon sweep. */}
-        <motion.linearGradient
-          id="beam"
-          variants={{ initial: { x1: '0%', x2: '8%', y1: '-30%', y2: '-14%' }, animate: { x1: '30%', x2: '42%', y1: '120%', y2: '138%' } }}
-          initial="initial"
-          animate={reduce ? 'initial' : 'animate'}
-          transition={{ duration: 3.2, repeat: reduce ? 0 : Infinity, repeatType: 'loop', ease: 'linear', repeatDelay: 1.6 }}
-        >
-          <stop stopColor={C.blue} stopOpacity="0" />
-          <stop offset="0.5" stopColor={C.blue} stopOpacity="0.9" />
-          <stop offset="1" stopColor={C.blue} stopOpacity="0" />
-        </motion.linearGradient>
-        <clipPath id="panelClip"><rect x="24" y="24" width="552" height="512" /></clipPath>
-      </defs>
-
-      {/* sheet + frame */}
-      <rect x="0" y="0" width="600" height="560" fill={C.panel} />
-      <rect x="24" y="24" width="552" height="512" fill="url(#grid20)" />
-      <rect x="24" y="24" width="552" height="512" fill="none" stroke={C.line2} strokeWidth="1.25" />
-
-      {/* beam traces along a few grid lines */}
-      <g clipPath="url(#panelClip)" opacity="0.9">
-        <path d="M24 84 H576 M24 464 H576 M120 24 V536 M480 24 V536" stroke="url(#beam)" strokeWidth="2" fill="none" />
-      </g>
-
-      {/* registration crosshairs */}
-      {[[60, 60], [540, 60], [60, 500], [540, 500]].map(([x, y], i) => (
-        <path key={i} d={`M${x - 7} ${y} H${x + 7} M${x} ${y - 7} V${y + 7}`} stroke={C.line2} strokeWidth="1" />
-      ))}
-
-      {/* ── the garment flat (crewneck), drawn left-of-center ─────────────── */}
-      <g transform="translate(40,64)" fill="none" stroke={C.ink} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round">
-        <motion.path {...draw} transition={drawT(0.2)}
-          d="M130 46 L98 54 L44 150 L60 166 L112 92 L118 300 L202 300 L208 92 L260 166 L276 150 L222 54 L190 46 Q160 62 130 46 Z" />
-        {/* neck rib, hem rib, cuffs */}
-        <motion.path {...draw} transition={drawT(1.0)} stroke={C.ink2} strokeWidth="1.6"
-          d="M133 51 Q160 65 187 51 M118 291 L202 291 M46 152 L60 165 M51 147 L64 160 M274 152 L260 165 M269 147 L256 160" />
-        {/* center-front seam, dashed */}
-        <motion.path {...draw} transition={drawT(1.1)} stroke={C.ink3} strokeWidth="1.2" strokeDasharray="2 5"
-          d="M160 66 L160 300" />
-        {/* grainline mark, on-body, in accent */}
-        <motion.path initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: calloutBase - 0.2, duration: 0.4 }}
-          stroke={C.blue} strokeWidth="2"
-          d="M160 150 V236 M154 158 L160 148 L166 158 M154 228 L160 238 L166 228" />
-      </g>
-
-      {/* ── dimension callouts ────────────────────────────────────────────── */}
-      {CALLOUTS.map((c, i) => (
-        <motion.g key={c.n} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: calloutBase + i * 0.18, duration: 0.5 }}>
-          <circle cx={c.at[0]} cy={c.at[1]} r="3" fill={C.blue} />
-          <path d={`M${c.at[0]} ${c.at[1]} L${c.to[0] - 26} ${c.at[1]} L${c.to[0]} ${c.to[1]}`} stroke={C.blue} strokeWidth="1" fill="none" />
-          <text x={c.to[0] + 6} y={c.to[1] - 5} fontFamily={MONO} fontSize="12" fontWeight="700" fill={C.blue}>{c.n}</text>
-          <text x={c.to[0] + 6} y={c.to[1] + 12} fontFamily={MONO} fontSize="12.5" fill={C.ink}>{c.label}</text>
-        </motion.g>
-      ))}
-
-      {/* ── title block ───────────────────────────────────────────────────── */}
-      <g fontFamily={MONO} fill={C.ink2}>
-        <path d={`M24 494 H576 M180 494 V536 M372 494 V536 M474 494 V536`} stroke={C.line2} strokeWidth="1.25" />
-        <text x="36" y="514" fontSize="11" letterSpacing="1.5" fill={C.ink} fontWeight="700">ATELIER</text>
-        <text x="36" y="528" fontSize="9.5" fill={C.ink3}>PRODUCTION OS</text>
-        <text x="192" y="514" fontSize="10.5">FLAT 001 · CREWNECK</text>
-        <text x="192" y="528" fontSize="9.5" fill={C.ink3}>FRONT · GRADE M</text>
-        <text x="384" y="514" fontSize="10.5">SCALE 1:4</text>
-        <text x="384" y="528" fontSize="9.5" fill={C.ink3}>UNIT CM</text>
-        <text x="486" y="514" fontSize="10.5">REV 2.1</text>
-        <text x="486" y="528" fontSize="9.5" fill={C.ink3}>SHEET 1/1</text>
-      </g>
-    </svg>
+    <div className="ds-hero3d" ref={heroRef} onMouseMove={handleMove} onMouseLeave={handleLeave}>
+      <div className="ds-floor" aria-hidden />
+      <div className="ds-glow" aria-hidden />
+      <div className="ds-stage">
+        <motion.div className="ds-scene" style={reduce ? {} : { rotateX, rotateY }}>
+          {PIECES.map(p => <PatternCard key={p.key} piece={p} px={reduce ? zero : springX} py={reduce ? zero : springY} />)}
+        </motion.div>
+      </div>
+      <motion.div className="ds-headline-3d" style={reduce ? {} : { x: headX, y: headY }}>
+        <div className="ds-eyebrow"><Grainline h={16} color={C.blue} stroke={2.4} /><span>Rev 2.2 · For independent labels</span></div>
+        <h1 className="ds-h1">
+          From flat<br />sketch to<br /><span className="ds-h1-holo">finished run.</span>
+        </h1>
+        <p className="ds-lede">
+          Atelier is the production workspace for independent clothing brands — design, tech-pack, source, sample, and manufacture a product in one place, instead of a stack of spreadsheets, DMs, and freelance tech-pack files.
+        </p>
+        <div className="ds-cta-row">
+          <button className="ds-btn ds-btn-holo ds-btn-lg" onClick={() => navigate('/signup')}>
+            Start free <span className="ds-btn-arrow">→</span>
+          </button>
+          <a href="#index" className="ds-btn ds-btn-line ds-btn-lg">See the spec</a>
+        </div>
+        <div className="ds-note"><span className="ds-tick" /> No card. The free plan runs one product, forever.</div>
+      </motion.div>
+      <div className="ds-compass-dock"><GrainCompass angle={angle} active={active} /></div>
+      <CornerMarks />
+    </div>
   );
 }
 
@@ -202,6 +294,37 @@ function Reveal({ children, style, as = 'div' }) {
   );
 }
 
+/* Cheap, imperative 3D hover-tilt — writes CSS vars directly to the DOM node
+   instead of going through React state, so it costs nothing on re-render. */
+function useTilt(strength = 8) {
+  const ref = useRef(null);
+  const onMove = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.setProperty('--rx', `${(-py * strength).toFixed(2)}deg`);
+    el.style.setProperty('--ry', `${(px * strength).toFixed(2)}deg`);
+  };
+  const onLeave = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty('--rx', '0deg');
+    el.style.setProperty('--ry', '0deg');
+  };
+  return { ref, onMouseMove: onMove, onMouseLeave: onLeave };
+}
+
+function TiltCard({ className, children, style, strength = 7 }) {
+  const tilt = useTilt(strength);
+  return (
+    <div ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} className={`ds-tilt ${className || ''}`} style={style}>
+      <div className="ds-tilt-inner">{children}</div>
+    </div>
+  );
+}
+
 export default function Welcome() {
   const navigate = useNavigate();
 
@@ -209,7 +332,6 @@ export default function Welcome() {
     <div className="ds-root">
       <style>{CSS}</style>
 
-      {/* ── title bar ─────────────────────────────────────────────────────── */}
       <header className="ds-bar">
         <div className="ds-bar-in">
           <div className="ds-brand">
@@ -226,52 +348,25 @@ export default function Welcome() {
         </div>
       </header>
 
-      {/* ── hero ──────────────────────────────────────────────────────────── */}
       <section className="ds-hero">
-        <CornerMarks />
-        <div className="ds-hero-grid">
-          <motion.div className="ds-hero-copy" variants={stagger} initial="hidden" animate="show">
-            <motion.div variants={reveal}><Eyebrow>Rev 2.1 · For independent labels</Eyebrow></motion.div>
-            <motion.h1 variants={reveal} className="ds-h1">
-              From flat<br />sketch to<br /><span className="ds-h1-blue">finished run.</span>
-            </motion.h1>
-            <motion.p variants={reveal} className="ds-lede">
-              Atelier is the production workspace for independent clothing brands — design, tech-pack, source, sample, and manufacture a product in one place, instead of a stack of spreadsheets, DMs, and freelance tech-pack files.
-            </motion.p>
-            <motion.div variants={reveal} className="ds-cta-row">
-              <button className="ds-btn ds-btn-solid ds-btn-lg" onClick={() => navigate('/signup')}>
-                Start free <span className="ds-btn-arrow">→</span>
-              </button>
-              <a href="#index" className="ds-btn ds-btn-line ds-btn-lg">See the spec</a>
-            </motion.div>
-            <motion.div variants={reveal} className="ds-note">
-              <span className="ds-tick" /> No card. The free plan runs one product, forever.
-            </motion.div>
-          </motion.div>
+        <Hero3D navigate={navigate} />
 
-          <div className="ds-hero-panel">
-            <DraftPanel />
-          </div>
-        </div>
-
-        {/* spec strip — true one-liners, not fabricated stats */}
         <div className="ds-strip">
           {['6 stages · concept → sold', 'AI assists — never decides', 'Real vendors, real quotes', 'Free plan, one product, forever'].map((t, i) => (
-            <span key={i} className="ds-strip-item"><Grainline h={12} color={C.ink3} stroke={2.6} /> {t}</span>
+            <span key={i} className="ds-strip-item"><Grainline h={12} color={C.paperFaint} stroke={2.6} /> {t}</span>
           ))}
         </div>
       </section>
 
-      {/* ── mission — inverted title block band ───────────────────────────── */}
       <section className="ds-mission">
         <div className="ds-wrap">
-          <Reveal><Eyebrow color="#7FB3D0">Mission</Eyebrow></Reveal>
+          <Reveal><Eyebrow color={C.violet}>Mission</Eyebrow></Reveal>
           <Reveal as="p" style={{ margin: 0 }}>
             <span className="ds-mission-lead">
               Starting a clothing brand shouldn't take a rolodex, a manufacturing degree, and a miracle.
             </span>{' '}
             <span className="ds-mission-body">
-              Atelier gives an independent founder the tools to take a sketch seriously — and turn it into something real, sourceable, and sellable.
+              <em style={{ fontFamily: SERIF, fontStyle: 'italic', color: C.paper }}>Atelier</em> gives an independent founder the tools to take a sketch seriously — and turn it into something real, sourceable, and sellable.
             </span>
           </Reveal>
           <Reveal>
@@ -280,7 +375,6 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ── specification index (features) ───────────────────────────────── */}
       <section className="ds-section" id="index">
         <div className="ds-wrap">
           <Reveal>
@@ -291,18 +385,18 @@ export default function Welcome() {
           </Reveal>
           <motion.div className="ds-index" variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-60px' }}>
             {FEATURES.map(f => (
-              <motion.article key={f.n} variants={reveal} className="ds-cell">
-                <span className="ds-cell-corner" aria-hidden />
-                <div className="ds-cell-n">{f.n}</div>
-                <h3 className="ds-cell-title">{f.title}</h3>
-                <p className="ds-cell-text">{f.text}</p>
-              </motion.article>
+              <motion.div key={f.n} variants={reveal}>
+                <TiltCard className="ds-cell">
+                  <div className="ds-cell-n">{f.n}</div>
+                  <h3 className="ds-cell-title">{f.title}</h3>
+                  <p className="ds-cell-text">{f.text}</p>
+                </TiltCard>
+              </motion.div>
             ))}
           </motion.div>
         </div>
       </section>
 
-      {/* ── flow — a grade rule from concept to sold ─────────────────────── */}
       <section className="ds-section ds-flow-sec">
         <div className="ds-wrap">
           <Reveal><Eyebrow>Assembly sequence</Eyebrow></Reveal>
@@ -322,7 +416,6 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ── pricing ───────────────────────────────────────────────────────── */}
       <section className="ds-section" id="pricing">
         <div className="ds-wrap">
           <Reveal>
@@ -335,20 +428,22 @@ export default function Welcome() {
             {PLANS.map(p => {
               const feature = p.id === 'basic';
               return (
-                <motion.div key={p.id} variants={reveal} className={`ds-plan${feature ? ' ds-plan-feat' : ''}`}>
-                  {feature && <div className="ds-plan-flag">Most chosen</div>}
-                  <div className="ds-plan-name">{p.name}</div>
-                  <div className="ds-plan-tag">{p.tagline}</div>
-                  <div className="ds-plan-price"><span className="ds-plan-amt">{p.price}</span><span className="ds-plan-suf">{p.priceSuffix}</span></div>
-                  <div className="ds-plan-rule" />
-                  <ul className="ds-plan-list">
-                    {p.summary.map(s => (
-                      <li key={s}><Grainline h={12} color={feature ? '#7FB3D0' : C.blue} stroke={2.6} /><span>{s}</span></li>
-                    ))}
-                  </ul>
-                  <button className={`ds-btn ds-btn-lg ${feature ? 'ds-btn-cream' : 'ds-btn-solid'}`} style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate('/signup')}>
-                    {p.id === 'free' ? 'Start for free' : `Choose ${p.name}`}
-                  </button>
+                <motion.div key={p.id} variants={reveal}>
+                  <TiltCard className={`ds-plan${feature ? ' ds-plan-feat' : ''}`} strength={feature ? 9 : 6}>
+                    {feature && <div className="ds-plan-flag">Most chosen</div>}
+                    <div className="ds-plan-name">{p.name}</div>
+                    <div className="ds-plan-tag">{p.tagline}</div>
+                    <div className="ds-plan-price"><span className="ds-plan-amt">{p.price}</span><span className="ds-plan-suf">{p.priceSuffix}</span></div>
+                    <div className="ds-plan-rule" />
+                    <ul className="ds-plan-list">
+                      {p.summary.map(s => (
+                        <li key={s}><Grainline h={12} color={feature ? C.violet : C.blue} stroke={2.6} /><span>{s}</span></li>
+                      ))}
+                    </ul>
+                    <button className={`ds-btn ds-btn-lg ${feature ? 'ds-btn-holo' : 'ds-btn-line'}`} style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate('/signup')}>
+                      {p.id === 'free' ? 'Start for free' : `Choose ${p.name}`}
+                    </button>
+                  </TiltCard>
                 </motion.div>
               );
             })}
@@ -356,27 +451,25 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ── final cta ─────────────────────────────────────────────────────── */}
       <section className="ds-section">
         <div className="ds-wrap">
           <Reveal>
             <div className="ds-final">
-              <CornerMarks color="rgba(233,234,228,0.35)" />
-              <Grainline h={40} color="#7FB3D0" stroke={2.4} />
+              <CornerMarks color="rgba(244,242,236,0.18)" />
+              <Grainline h={40} color={C.violet} stroke={2.4} />
               <h2 className="ds-final-h">Your next product deserves a real workspace.</h2>
               <p className="ds-final-p">Set up your brand in a couple minutes and start on your first product today — free, no card needed.</p>
-              <button className="ds-btn ds-btn-cream ds-btn-lg" onClick={() => navigate('/signup')}>Start free <span className="ds-btn-arrow">→</span></button>
+              <button className="ds-btn ds-btn-holo ds-btn-lg" onClick={() => navigate('/signup')}>Start free <span className="ds-btn-arrow">→</span></button>
             </div>
           </Reveal>
         </div>
       </section>
 
-      {/* ── footer title block ────────────────────────────────────────────── */}
       <footer className="ds-foot">
         <div className="ds-wrap ds-foot-in">
           <div className="ds-brand">
-            <Grainline h={18} color={C.ink} stroke={2.6} />
-            <span className="ds-brand-name" style={{ color: C.ink }}>Atelier</span>
+            <Grainline h={18} color={C.paperDim} stroke={2.6} />
+            <span className="ds-brand-name" style={{ color: C.paper }}>Atelier</span>
           </div>
           <div className="ds-foot-meta">Production OS for independent clothing brands</div>
           <div className="ds-foot-links">
@@ -391,125 +484,153 @@ export default function Welcome() {
 }
 
 const CSS = `
-.ds-root { background: ${C.sheet}; color: ${C.ink}; font-family: ${BODY};
-  min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased;
-  background-image: linear-gradient(${C.line} 1px, transparent 1px), linear-gradient(90deg, ${C.line} 1px, transparent 1px);
-  background-size: 26px 26px; background-position: center top; }
-.ds-root ::selection { background: ${C.blue}; color: ${C.cream}; }
+.ds-root { background: ${C.ink}; color: ${C.paper}; font-family: ${BODY};
+  min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+.ds-root ::selection { background: ${C.blue}; color: ${C.ink}; }
 .ds-wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
 
 /* title bar */
-.ds-bar { position: sticky; top: 0; z-index: 40; background: rgba(231,232,226,0.82);
-  backdrop-filter: blur(8px); border-bottom: 1px solid ${C.line2}; }
+.ds-bar { position: sticky; top: 0; z-index: 40; background: rgba(10,12,17,0.72);
+  backdrop-filter: blur(10px); border-bottom: 1px solid ${C.line}; }
 .ds-bar-in { max-width: 1120px; margin: 0 auto; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; }
 .ds-brand { display: flex; align-items: center; gap: 9px; }
-.ds-brand-name { font-family: ${DISPLAY}; font-weight: 800; font-size: 18px; letter-spacing: -0.01em; }
-.ds-brand-sub { font-family: ${MONO}; font-size: 9.5px; letter-spacing: 0.16em; color: ${C.ink3}; padding: 3px 6px; border: 1px solid ${C.line2}; border-radius: 3px; }
+.ds-brand-name { font-family: ${DISPLAY}; font-weight: 800; font-size: 18px; letter-spacing: -0.01em; color: ${C.paper}; }
+.ds-brand-sub { font-family: ${MONO}; font-size: 9.5px; letter-spacing: 0.16em; color: ${C.paperFaint}; padding: 3px 6px; border: 1px solid ${C.line}; border-radius: 3px; }
 .ds-nav { display: flex; align-items: center; gap: 20px; }
-.ds-nav-link { font-family: ${MONO}; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: ${C.ink2}; text-decoration: none; }
-.ds-nav-link:hover { color: ${C.ink}; }
+.ds-nav-link { font-family: ${MONO}; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: ${C.paperDim}; text-decoration: none; }
+.ds-nav-link:hover { color: ${C.paper}; }
 
 /* buttons */
 .ds-btn { font-family: ${MONO}; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   border: 1.5px solid transparent; border-radius: 4px; padding: 9px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
-  text-decoration: none; transition: transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease; }
+  text-decoration: none; transition: transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease, box-shadow .18s ease; }
 .ds-btn:active { transform: translateY(1px); }
 .ds-btn-lg { padding: 13px 22px; font-size: 13px; }
-.ds-btn-solid { background: ${C.ink}; color: ${C.cream}; border-color: ${C.ink}; }
-.ds-btn-solid:hover { background: ${C.blueDeep}; border-color: ${C.blueDeep}; }
-.ds-btn-cream { background: ${C.cream}; color: ${C.ink}; border-color: ${C.cream}; }
-.ds-btn-cream:hover { background: #fff; }
-.ds-btn-line { background: transparent; color: ${C.ink}; border-color: ${C.ink}; }
-.ds-btn-line:hover { background: ${C.ink}; color: ${C.cream}; }
-.ds-btn-ghost { background: transparent; color: ${C.ink2}; border-color: transparent; }
-.ds-btn-ghost:hover { color: ${C.ink}; }
+.ds-btn-solid { background: ${C.paper}; color: ${C.ink}; border-color: ${C.paper}; }
+.ds-btn-solid:hover { background: ${C.blue}; border-color: ${C.blue}; color: ${C.ink}; }
+.ds-btn-holo { background: ${HOLO}; color: ${C.ink}; border-color: transparent; background-size: 220% 100%; background-position: 0% 0%; }
+.ds-btn-holo:hover { background-position: 100% 0%; box-shadow: 0 6px 28px -6px rgba(169,140,245,0.55); }
+.ds-btn-line { background: transparent; color: ${C.paper}; border-color: ${C.lineBright}; }
+.ds-btn-line:hover { background: ${C.paper}; color: ${C.ink}; border-color: ${C.paper}; }
+.ds-btn-ghost { background: transparent; color: ${C.paperDim}; border-color: transparent; }
+.ds-btn-ghost:hover { color: ${C.paper}; }
 .ds-btn-arrow { transition: transform .16s ease; }
 .ds-btn:hover .ds-btn-arrow { transform: translateX(3px); }
 
-/* hero */
-.ds-hero { position: relative; padding: 64px 0 20px; }
-.ds-hero-grid { max-width: 1120px; margin: 0 auto; padding: 0 28px; display: grid; grid-template-columns: 1.02fr 1.1fr; gap: 40px; align-items: center; }
-.ds-hero-copy { display: flex; flex-direction: column; gap: 22px; }
-.ds-h1 { font-family: ${DISPLAY}; font-weight: 900; font-size: clamp(42px, 6.4vw, 82px); line-height: 0.94;
-  letter-spacing: -0.025em; text-transform: uppercase; margin: 4px 0 0; }
-.ds-h1-blue { color: ${C.blue}; }
-.ds-lede { font-size: 16.5px; line-height: 1.62; color: ${C.ink2}; max-width: 480px; margin: 0; }
-.ds-cta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.ds-note { font-family: ${MONO}; font-size: 12px; color: ${C.ink3}; display: flex; align-items: center; gap: 9px; }
+/* ── 3D hero scene ────────────────────────────────────────────────────── */
+.ds-hero { position: relative; padding: 8px 0 20px; }
+.ds-hero3d { position: relative; height: min(88vh, 780px); min-height: 560px; overflow: hidden; }
+.ds-glow { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 50% at 32% 40%, rgba(107,168,222,0.16), transparent 70%),
+              radial-gradient(45% 40% at 78% 62%, rgba(255,138,107,0.12), transparent 70%); }
+.ds-floor { position: absolute; left: -20%; right: -20%; bottom: -30%; height: 90%;
+  background-image: linear-gradient(${C.line} 1px, transparent 1px), linear-gradient(90deg, ${C.line} 1px, transparent 1px);
+  background-size: 46px 46px;
+  transform: perspective(700px) rotateX(72deg);
+  transform-origin: bottom center;
+  -webkit-mask-image: linear-gradient(to top, black 0%, transparent 75%);
+  mask-image: linear-gradient(to top, black 0%, transparent 75%);
+}
+.ds-stage { position: absolute; inset: 0; perspective: 1500px; display: flex; align-items: center; justify-content: center; }
+.ds-scene { position: relative; width: min(920px, 92vw); height: 100%; transform-style: preserve-3d; }
+.ds-piece { transform-style: preserve-3d; will-change: transform; pointer-events: none; }
+.ds-piece-card { padding: 10px 10px 16px; border-radius: 10px; background: rgba(20,23,31,0.55);
+  border: 1px solid ${C.line}; backdrop-filter: blur(3px); box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7); }
+.ds-headline-3d { position: absolute; left: 28px; top: 12%; width: min(430px, 72vw); z-index: 4; }
+.ds-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${MONO}; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${C.blue}; margin-bottom: 18px; }
+.ds-h1 { font-family: ${DISPLAY}; font-weight: 900; font-size: clamp(34px, 4.8vw, 64px); line-height: 0.96;
+  letter-spacing: -0.025em; text-transform: uppercase; margin: 0; color: ${C.paper}; text-shadow: 0 4px 40px rgba(0,0,0,0.5); }
+.ds-h1-holo { background: ${HOLO}; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ds-lede { font-size: 14.5px; line-height: 1.58; color: ${C.paperDim}; max-width: 420px; margin: 16px 0 0; }
+.ds-cta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.ds-note { font-family: ${MONO}; font-size: 12px; color: ${C.paperFaint}; display: flex; align-items: center; gap: 9px; margin-top: 14px; }
 .ds-tick { width: 7px; height: 7px; background: ${C.blue}; border-radius: 50%; flex-shrink: 0; }
-.ds-hero-panel { border: 1.5px solid ${C.line2}; border-radius: 6px; background: ${C.panel}; box-shadow: 0 24px 60px -30px rgba(21,23,27,0.32); overflow: hidden; }
+
+.ds-compass-dock { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); z-index: 5; }
+.ds-compass { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 14px; border-radius: 12px;
+  background: rgba(18,21,29,0.62); border: 1px solid ${C.line}; backdrop-filter: blur(6px); }
+.ds-compass-label { font-family: ${MONO}; font-size: 9px; letter-spacing: 0.1em; color: ${C.paperFaint}; display: flex; align-items: center; gap: 6px; text-transform: uppercase; }
+.ds-compass-dot { width: 5px; height: 5px; border-radius: 50%; transition: background .2s ease; }
+.ds-compass-read { font-family: ${MONO}; font-size: 12px; color: ${C.paperDim}; letter-spacing: 0.02em; }
+.ds-compass-read b { color: ${C.blue}; font-weight: 700; }
 
 /* spec strip */
-.ds-strip { max-width: 1120px; margin: 44px auto 0; padding: 16px 28px; border-top: 1px solid ${C.line2}; border-bottom: 1px solid ${C.line2};
+.ds-strip { max-width: 1120px; margin: 28px auto 0; padding: 16px 28px; border-top: 1px solid ${C.line}; border-bottom: 1px solid ${C.line};
   display: flex; flex-wrap: wrap; gap: 12px 30px; }
-.ds-strip-item { font-family: ${MONO}; font-size: 12px; letter-spacing: 0.03em; color: ${C.ink2}; display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase; }
+.ds-strip-item { font-family: ${MONO}; font-size: 12px; letter-spacing: 0.03em; color: ${C.paperDim}; display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase; }
 
 /* mission */
-.ds-mission { background: ${C.ink}; color: ${C.cream}; padding: 96px 0; margin-top: 60px; }
+.ds-mission { padding: 96px 0; background: radial-gradient(60% 100% at 50% 0%, rgba(169,140,245,0.06), transparent 60%); border-top: 1px solid ${C.line}; }
 .ds-mission .ds-wrap { display: flex; flex-direction: column; gap: 26px; max-width: 900px; }
-.ds-mission-lead { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 38px); line-height: 1.18; letter-spacing: -0.01em; color: ${C.cream}; }
-.ds-mission-body { font-size: clamp(18px, 2.2vw, 24px); line-height: 1.5; color: #A9B4BC; font-family: ${BODY}; }
-.ds-mission-foot { font-family: ${MONO}; font-size: 12.5px; letter-spacing: 0.04em; color: #7FB3D0; text-transform: uppercase; }
+.ds-mission-lead { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 38px); line-height: 1.18; letter-spacing: -0.01em; color: ${C.paper}; }
+.ds-mission-body { font-size: clamp(18px, 2.2vw, 24px); line-height: 1.5; color: ${C.paperDim}; font-family: ${BODY}; }
+.ds-mission-foot { font-family: ${MONO}; font-size: 12.5px; letter-spacing: 0.04em; color: ${C.violet}; text-transform: uppercase; }
 
 /* generic section */
 .ds-section { padding: 90px 0; }
 .ds-sec-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 40px; }
-.ds-h2 { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(26px, 3.6vw, 40px); line-height: 1.06; letter-spacing: -0.02em; text-transform: uppercase; margin: 0; max-width: 640px; }
+.ds-h2 { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(26px, 3.6vw, 40px); line-height: 1.06; letter-spacing: -0.02em; text-transform: uppercase; margin: 0; max-width: 640px; color: ${C.paper}; }
+
+/* 3D tilt cards (shared by spec index + pricing) */
+.ds-tilt { perspective: 900px; }
+.ds-tilt-inner { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .1s ease-out; transform-style: preserve-3d; height: 100%; }
 
 /* specification index */
-.ds-index { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1.5px solid ${C.line2}; border-left: 1.5px solid ${C.line2}; }
-.ds-cell { position: relative; padding: 26px 24px 30px; border-right: 1.5px solid ${C.line2}; border-bottom: 1.5px solid ${C.line2}; background: ${C.sheet2}; transition: background .16s ease; }
-.ds-cell:hover { background: ${C.panel}; }
-.ds-cell-corner { position: absolute; top: 0; right: 0; width: 14px; height: 14px; border-top: 2px solid transparent; border-right: 2px solid transparent; transition: border-color .16s ease; }
-.ds-cell:hover .ds-cell-corner { border-color: ${C.blue}; }
+.ds-index { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5px; background: ${C.line}; border: 1.5px solid ${C.line}; }
+.ds-cell { position: relative; background: ${C.ink2}; height: 100%; }
+.ds-cell .ds-tilt-inner { padding: 26px 24px 30px; }
+.ds-cell:hover { background: ${C.ink3}; }
 .ds-cell-n { font-family: ${MONO}; font-size: 12px; font-weight: 700; color: ${C.blue}; letter-spacing: 0.08em; }
-.ds-cell-title { font-family: ${DISPLAY}; font-weight: 700; font-size: 16.5px; margin: 12px 0 8px; letter-spacing: -0.01em; }
-.ds-cell-text { font-size: 13px; line-height: 1.6; color: ${C.ink2}; margin: 0; }
+.ds-cell-title { font-family: ${DISPLAY}; font-weight: 700; font-size: 16.5px; margin: 12px 0 8px; letter-spacing: -0.01em; color: ${C.paper}; }
+.ds-cell-text { font-size: 13px; line-height: 1.6; color: ${C.paperDim}; margin: 0; }
 
 /* flow rule */
-.ds-flow-sec { background: ${C.sheet2}; border-top: 1px solid ${C.line2}; border-bottom: 1px solid ${C.line2}; }
+.ds-flow-sec { background: ${C.ink2}; border-top: 1px solid ${C.line}; border-bottom: 1px solid ${C.line}; }
 .ds-rule { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding-top: 26px; }
-.ds-rule-line { position: absolute; top: 26px; left: 0; right: 0; height: 2px; background: ${C.line2}; }
+.ds-rule-line { position: absolute; top: 26px; left: 0; right: 0; height: 2px; background: ${C.line}; }
 .ds-rule-stop { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
 .ds-rule-tick { width: 2px; height: 16px; background: ${C.blue}; margin-top: -7px; }
 .ds-rule-n { font-family: ${MONO}; font-size: 12px; font-weight: 700; color: ${C.blue}; }
-.ds-rule-label { font-family: ${DISPLAY}; font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; line-height: 1.15; }
+.ds-rule-label { font-family: ${DISPLAY}; font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; line-height: 1.15; color: ${C.paper}; }
 
 /* pricing */
 .ds-price { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.ds-plan { position: relative; border: 1.5px solid ${C.line2}; border-radius: 6px; background: ${C.sheet2}; padding: 26px 24px; display: flex; flex-direction: column; }
-.ds-plan-feat { background: ${C.ink}; color: ${C.cream}; border-color: ${C.ink}; }
-.ds-plan-flag { position: absolute; top: -11px; left: 24px; font-family: ${MONO}; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: ${C.blue}; color: ${C.cream}; padding: 4px 10px; border-radius: 3px; }
-.ds-plan-name { font-family: ${DISPLAY}; font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: -0.01em; }
-.ds-plan-tag { font-size: 12.5px; color: ${C.ink3}; margin-top: 4px; }
-.ds-plan-feat .ds-plan-tag { color: #9BA6AE; }
+.ds-plan { border-radius: 10px; background: ${C.ink2}; border: 1.5px solid ${C.line}; }
+.ds-plan .ds-tilt-inner { padding: 26px 24px; display: flex; flex-direction: column; height: 100%; position: relative; }
+.ds-plan-feat { background: linear-gradient(160deg, ${C.ink3}, ${C.ink2}); border-color: ${C.violet}55; box-shadow: 0 30px 60px -34px rgba(169,140,245,0.5); }
+.ds-plan-flag { position: absolute; top: -12px; left: 0; font-family: ${MONO}; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: ${HOLO}; color: ${C.ink}; padding: 4px 10px; border-radius: 3px; }
+.ds-plan-name { font-family: ${DISPLAY}; font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: -0.01em; color: ${C.paper}; }
+.ds-plan-tag { font-size: 12.5px; color: ${C.paperFaint}; margin-top: 4px; }
 .ds-plan-price { display: flex; align-items: baseline; gap: 5px; margin: 18px 0; }
-.ds-plan-amt { font-family: ${MONO}; font-size: 34px; font-weight: 700; }
-.ds-plan-suf { font-family: ${MONO}; font-size: 12px; color: ${C.ink3}; }
-.ds-plan-feat .ds-plan-suf { color: #9BA6AE; }
-.ds-plan-rule { height: 1px; background: ${C.line2}; margin-bottom: 18px; }
-.ds-plan-feat .ds-plan-rule { background: rgba(233,234,228,0.18); }
+.ds-plan-amt { font-family: ${MONO}; font-size: 34px; font-weight: 700; color: ${C.paper}; }
+.ds-plan-suf { font-family: ${MONO}; font-size: 12px; color: ${C.paperFaint}; }
+.ds-plan-rule { height: 1px; background: ${C.line}; margin-bottom: 18px; }
 .ds-plan-list { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
-.ds-plan-list li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.45; }
+.ds-plan-list li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.45; color: ${C.paperDim}; }
 .ds-plan-list svg { margin-top: 1px; flex-shrink: 0; }
 
 /* final cta */
-.ds-final { position: relative; background: ${C.ink}; color: ${C.cream}; border-radius: 8px; padding: 60px 40px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.ds-final-h { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 36px); text-transform: uppercase; letter-spacing: -0.02em; line-height: 1.08; margin: 4px 0 0; max-width: 560px; }
-.ds-final-p { font-size: 14.5px; color: #A9B4BC; max-width: 460px; margin: 0 0 8px; line-height: 1.6; }
+.ds-final { position: relative; background: ${C.ink2}; border: 1.5px solid ${C.line}; border-radius: 10px; padding: 60px 40px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; overflow: hidden; }
+.ds-final::before { content: ''; position: absolute; inset: -40%; background: ${HOLO}; opacity: 0.08; filter: blur(60px); }
+.ds-final-h { position: relative; font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 36px); text-transform: uppercase; letter-spacing: -0.02em; line-height: 1.08; margin: 4px 0 0; max-width: 560px; color: ${C.paper}; }
+.ds-final-p { position: relative; font-size: 14.5px; color: ${C.paperDim}; max-width: 460px; margin: 0 0 8px; line-height: 1.6; }
 
 /* footer */
-.ds-foot { border-top: 1.5px solid ${C.line2}; padding: 26px 0 40px; }
+.ds-foot { border-top: 1.5px solid ${C.line}; padding: 26px 0 40px; }
 .ds-foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
-.ds-foot-meta { font-family: ${MONO}; font-size: 11.5px; color: ${C.ink3}; letter-spacing: 0.03em; }
+.ds-foot-meta { font-family: ${MONO}; font-size: 11.5px; color: ${C.paperFaint}; letter-spacing: 0.03em; }
 .ds-foot-links { display: flex; gap: 20px; }
-.ds-foot-links a { font-family: ${MONO}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: ${C.ink2}; text-decoration: none; }
+.ds-foot-links a { font-family: ${MONO}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: ${C.paperDim}; text-decoration: none; }
 .ds-foot-links a:hover { color: ${C.blue}; }
 
-/* responsive */
+/* responsive — the 3D scene (pieces + floor + compass) is a desktop pointer
+   interaction by nature (parallax and hover-tilt need a mouse), so below
+   900px it steps aside for a plain, fully-readable static hero instead of
+   an approximation that can't really be "interactive" on a touchscreen. */
 @media (max-width: 900px) {
-  .ds-hero-grid { grid-template-columns: 1fr; gap: 30px; }
-  .ds-hero { padding-top: 40px; }
+  .ds-hero3d { height: auto; min-height: 0; padding: 36px 0 32px; overflow: visible; }
+  .ds-stage, .ds-compass-dock, .ds-glow, .ds-floor { display: none; }
+  .ds-headline-3d { position: static; width: 100%; padding: 0 18px; }
   .ds-index { grid-template-columns: repeat(2, 1fr); }
   .ds-rule { grid-template-columns: repeat(4, 1fr); row-gap: 22px; }
   .ds-rule-line { display: none; }
@@ -520,7 +641,7 @@ const CSS = `
   .ds-brand-sub { display: none; }
   .ds-bar-in { padding: 11px 18px; }
   .ds-nav { gap: 12px; }
-  .ds-wrap, .ds-hero-grid { padding-left: 18px; padding-right: 18px; }
+  .ds-wrap { padding-left: 18px; padding-right: 18px; }
 }
 @media (max-width: 520px) {
   .ds-index { grid-template-columns: 1fr; }
@@ -529,6 +650,7 @@ const CSS = `
   .ds-section { padding: 64px 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ds-btn, .ds-btn-arrow { transition: none; }
+  .ds-btn, .ds-btn-arrow, .ds-tilt-inner { transition: none; }
+  .ds-piece { transform: none !important; }
 }
 `;
