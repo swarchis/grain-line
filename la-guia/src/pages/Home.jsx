@@ -8,6 +8,7 @@ import { useProduction } from '../context/ProductionContext.jsx';
 import { useNotifications } from '../context/NotificationsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
+import { useSales } from '../context/SalesContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
 import { PinnedPhoto, PhotoPanel, WaxSeal, Thumbtack } from '../components/decor.jsx';
@@ -144,6 +145,47 @@ export default function Home() {
   const { notifications } = useNotifications();
   const { focusSearch } = useAppUI();
   const { preferences, updatePreferences } = useUserPreferences();
+  const { productSales } = useSales();
+
+  // --- GLOBAL INVENTORY RISK ENGINE ---
+  const inventoryAlerts = React.useMemo(() => {
+    if (!products.length || !productionOrders.length) return [];
+    
+    return products.map(p => {
+      // 1. Get total produced for this product (delivered orders)
+      const productOrders = productionOrders.filter(o => o.product_id === p.id && o.stage === 'Delivered');
+      const totalProduced = productOrders.reduce((sum, o) => sum + (o.units || 0), 0);
+      
+      // 2. Get total sold from Shopify sales data
+      const sales = productSales[p.id] || [];
+      const totalSold = sales.reduce((sum, m) => sum + (m.orders_count || 0), 0);
+      
+      const currentStock = Math.max(0, totalProduced - totalSold);
+      const activeMonths = sales.length || 1;
+      const dailyVelocity = totalSold / (activeMonths * 30);
+      
+      // 3. Get lead time
+      const latestOrder = productOrders[0];
+      const rawLeadTime = latestOrder?.vendors?.lead_time || '45'; 
+      const leadTimeDays = parseInt(rawLeadTime.replace(/\D/g, '')) || 45;
+
+      const reorderPoint = Math.ceil(dailyVelocity * leadTimeDays);
+      const daysRemaining = dailyVelocity > 0 ? Math.floor(currentStock / dailyVelocity) : 0;
+      
+      if (totalProduced > 0 && dailyVelocity > 0 && currentStock <= reorderPoint) {
+        return {
+          productId: p.id,
+          name: p.name,
+          currentStock,
+          reorderPoint,
+          daysRemaining,
+          leadTimeDays
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  }, [products, productionOrders, productSales]);
+  // ------------------------------------
   const [draggingId, setDraggingId] = useState(null);
   const [overStage, setOverStage] = useState(null);
   const [editingDashboard, setEditingDashboard] = useState(false);
@@ -251,6 +293,33 @@ export default function Home() {
           </h1>
           <div style={{ fontSize: 13.5, color: 'var(--ink-3)', marginTop: 6 }}>Here's what's happening in your atelier.</div>
         </div>
+
+        {/* GLOBAL INVENTORY RISK ALERTS */}
+        {inventoryAlerts.length > 0 && (
+          <div className="card-raised enter" style={{ border: '1px solid var(--red-border)', background: 'var(--red-bg)', padding: '16px 20px', marginBottom: 24, borderRadius: 'var(--r)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--red)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="ph ph-warning" style={{ fontSize: 16 }} />
+              </div>
+              <span style={{ fontSize: 11.5, fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--red)', letterSpacing: '0.05em' }}>Inventory Action Required</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {inventoryAlerts.map(alert => (
+                <div key={alert.productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontSize: 13, color: 'var(--ink-2)' }}>
+                  <span>
+                    <strong>{alert.name}</strong> has dipped below its reorder point. Current stock is <strong>{alert.currentStock} units</strong> (reorder point is {alert.reorderPoint}).
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--red)' }}>{alert.daysRemaining} days runway left</span>
+                    <button className="btn btn-sm" style={{ background: 'var(--bg-1)', borderColor: 'var(--red-border)', fontSize: 12 }} onClick={() => navigate(`/products/${alert.productId}/performance`)}>
+                      Manage reorder
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {featured && (
           <div data-tour="home-hero" className="card-raised enter" style={{ marginBottom: 24, display: 'grid', gridTemplateColumns: '0.85fr 1.3fr 1fr', gap: 26, padding: '26px 28px', overflow: 'visible', position: 'relative', alignItems: 'center' }}>
