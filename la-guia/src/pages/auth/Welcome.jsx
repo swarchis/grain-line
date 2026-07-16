@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform, useScroll, useReducedMotion } from 'framer-motion';
 import { STAGES } from '../../data/mockData.js';
 import { PLANS } from '../../data/plans.js';
 
@@ -19,9 +19,26 @@ import { PLANS } from '../../data/plans.js';
    decorative rainbow dial. Everything else on the page stays disciplined:
    the same technical drafting vocabulary (title blocks, dimension ticks,
    mono captions) as before, just lit for depth instead of flattened on
-   cream paper. Dark ink ground, a thread-holographic accent family (blue →
-   violet → coral → gold, like light catching grosgrain) used sparingly —
-   card edges, the compass ring, one CTA — never as a full-bleed rainbow.
+   cream paper.
+
+   Revision note: v1 used a flat linear-gradient fill on the hero text and
+   every CTA — the single most common "AI made this" tell, because it's the
+   cheapest way to look colorful and reads as exactly that: cheap. v2 keeps
+   the same thread-holographic palette (blue → violet → coral → gold) but
+   never fills a shape with it flat. Text gets a real backlit glow
+   (layered text-shadow, no gradient clip); buttons get a rotating
+   conic-gradient ring behind a solid dark face (the "expensive SaaS
+   button" trick — light chases the edge, the face stays solid); the page
+   gets a genuine atmosphere layer (drifting blurred aurora blobs + SVG
+   grain texture, both full-bleed and fixed, not just a hero-local glow);
+   and pattern pieces get real per-surface lighting (a specular highlight,
+   a gradient rim-light border, a colored ambient shadow, depth-cued blur
+   on the pieces further from camera) instead of a flat glass panel.
+   Directionality: a single diagonal grainline thread — the brand's own
+   mark — runs the full height of the page as an SVG that draws itself in
+   as you scroll, plus alternating left/right card entrances and skewed
+   section edges, so the page reads as one continuous diagonal cut rather
+   than a stack of centered rectangles.
 ─────────────────────────────────────────────────────────────────────────── */
 
 const C = {
@@ -38,7 +55,6 @@ const C = {
   coral: '#FF8A6B',
   gold: '#F0C56A',
 };
-const HOLO = `linear-gradient(115deg, ${C.blue}, ${C.violet} 35%, ${C.coral} 68%, ${C.gold} 100%)`;
 const DISPLAY = "'Archivo', system-ui, sans-serif";
 const MONO = "'Space Mono', ui-monospace, monospace";
 const BODY = "'Inter', system-ui, sans-serif";
@@ -141,16 +157,20 @@ function CollarPiece() {
 }
 
 const PIECES = [
-  { key: 'front', Comp: FrontPiece, top: '4%', left: '46%', z: 60, baseRotY: -12, baseRotZ: -4, w: 168, depth: 1.4 },
-  { key: 'back', Comp: BackPiece, top: '0%', left: '73%', z: 10, baseRotY: 9, baseRotZ: 3, w: 138, depth: 0.7 },
-  { key: 'sleeve', Comp: SleevePiece, top: '42%', left: '64%', z: 100, baseRotY: -16, baseRotZ: 6, w: 118, depth: 1.9 },
-  { key: 'collar', Comp: CollarPiece, top: '58%', left: '48%', z: 140, baseRotY: 13, baseRotZ: -7, w: 146, depth: 2.4 },
+  { key: 'front', Comp: FrontPiece, top: '4%', left: '46%', z: 60, baseRotY: -12, baseRotZ: -4, w: 168, depth: 1.4, accent: C.blue, floatDur: 7.5, floatDelay: 0 },
+  { key: 'back', Comp: BackPiece, top: '0%', left: '73%', z: 10, baseRotY: 9, baseRotZ: 3, w: 138, depth: 0.7, accent: C.violet, floatDur: 8.5, floatDelay: 1.2 },
+  { key: 'sleeve', Comp: SleevePiece, top: '42%', left: '64%', z: 100, baseRotY: -16, baseRotZ: 6, w: 118, depth: 1.9, accent: C.coral, floatDur: 6.5, floatDelay: 0.6 },
+  { key: 'collar', Comp: CollarPiece, top: '58%', left: '48%', z: 140, baseRotY: 13, baseRotZ: -7, w: 146, depth: 2.4, accent: C.gold, floatDur: 9, floatDelay: 2 },
 ];
+const MAX_Z = Math.max(...PIECES.map(p => p.z));
 
-function PatternCard({ piece, px, py }) {
-  const { Comp, top, left, z, baseRotY, baseRotZ, w, depth } = piece;
+function PatternCard({ piece, px, py, reduce }) {
+  const { Comp, top, left, z, baseRotY, baseRotZ, w, depth, accent, floatDur, floatDelay } = piece;
   const x = useTransform(px, v => v * depth * 14);
   const y = useTransform(py, v => v * depth * 10);
+  // Pieces further from camera (lower z) read as further back — a soft
+  // depth-of-field blur sells that better than stacking order alone.
+  const depthBlur = Math.max(0, (MAX_Z - z) / 34);
   return (
     <motion.div
       className="ds-piece"
@@ -158,9 +178,12 @@ function PatternCard({ piece, px, py }) {
         position: 'absolute', top, left, width: w, x, y,
         transform: `translateZ(${z}px) rotateY(${baseRotY}deg) rotateZ(${baseRotZ}deg)`,
         transformStyle: 'preserve-3d',
+        animation: reduce ? 'none' : `ds-piece-float ${floatDur}s ease-in-out ${floatDelay}s infinite`,
       }}
     >
-      <div className="ds-piece-card"><Comp /></div>
+      <div className="ds-piece-card" style={{ '--glow': accent, filter: depthBlur ? `blur(${depthBlur.toFixed(2)}px)` : 'none' }}>
+        <Comp />
+      </div>
     </motion.div>
   );
 }
@@ -208,13 +231,23 @@ function Hero3D({ navigate }) {
   const zero = useMotionValue(0);
   const springX = useSpring(px, { stiffness: 60, damping: 16, mass: 0.6 });
   const springY = useSpring(py, { stiffness: 60, damping: 16, mass: 0.6 });
-  const rotateY = useTransform(springX, v => v * 9);
-  const rotateX = useTransform(springY, v => v * -7);
+  const pointerRotateY = useTransform(springX, v => v * 9);
+  const pointerRotateX = useTransform(springY, v => v * -7);
   const headX = useTransform(springX, v => v * -6);
   const headY = useTransform(springY, v => v * -4);
   const [angle, setAngle] = useState(24);
   const [active, setActive] = useState(false);
   const raf = useRef(null);
+
+  // Scroll doesn't just fade the hero out — it keeps driving the same 3D
+  // scene, pitching the "camera" further back and scattering the pieces,
+  // like stepping away from the table instead of a flat page cut.
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
+  const scrollRotateX = useTransform(scrollYProgress, [0, 1], [0, 16]);
+  const rotateY = pointerRotateY;
+  const rotateX = useTransform([pointerRotateX, scrollRotateX], ([a, b]) => a + b);
+  const sceneOpacity = useTransform(scrollYProgress, [0, 0.75, 1], [1, 1, 0]);
+  const sceneScale = useTransform(scrollYProgress, [0, 1], [1, 0.85]);
 
   const handleMove = (e) => {
     if (reduce) return;
@@ -244,8 +277,8 @@ function Hero3D({ navigate }) {
       <div className="ds-floor" aria-hidden />
       <div className="ds-glow" aria-hidden />
       <div className="ds-stage">
-        <motion.div className="ds-scene" style={reduce ? {} : { rotateX, rotateY }}>
-          {PIECES.map(p => <PatternCard key={p.key} piece={p} px={reduce ? zero : springX} py={reduce ? zero : springY} />)}
+        <motion.div className="ds-scene" style={reduce ? {} : { rotateX, rotateY, opacity: sceneOpacity, scale: sceneScale }}>
+          {PIECES.map(p => <PatternCard key={p.key} piece={p} px={reduce ? zero : springX} py={reduce ? zero : springY} reduce={reduce} />)}
         </motion.div>
       </div>
       <motion.div className="ds-headline-3d" style={reduce ? {} : { x: headX, y: headY }}>
@@ -270,6 +303,42 @@ function Hero3D({ navigate }) {
   );
 }
 
+/* ── Page-wide atmosphere — fixed behind everything, not just the hero, so
+   the "cool background" reads across the whole page rather than one
+   section. Three drifting blurred aurora blobs + an SVG grain texture
+   (the same feTurbulence technique the in-app sidebar already uses, doubly
+   apt here since "grain" is literally the brand's subject). ──────────────── */
+function Atmosphere() {
+  return (
+    <div className="ds-atmosphere" aria-hidden>
+      <div className="ds-aurora ds-aurora-1" />
+      <div className="ds-aurora ds-aurora-2" />
+      <div className="ds-aurora ds-aurora-3" />
+      <div className="ds-grain" />
+    </div>
+  );
+}
+
+/* ── The persistent grainline thread — the brand's own directional mark,
+   made structural: one diagonal path zigzags the full height of the page
+   and draws itself in as you scroll, so the page reads as a single
+   continuous diagonal cut instead of a stack of centered rectangles. ────── */
+function GrainlineThread() {
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll();
+  const dashoffset = useSpring(useTransform(scrollYProgress, [0, 1], [1, 0]), { stiffness: 40, damping: 20 });
+  return (
+    <svg className="ds-thread" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+      <motion.path
+        d="M8 0 L88 6 L18 16 L82 26 L14 38 L86 48 L20 58 L80 68 L16 80 L84 90 L50 100"
+        fill="none" stroke={C.blue} strokeWidth="0.15" strokeLinecap="round"
+        pathLength="1" strokeDasharray="1"
+        style={{ strokeDashoffset: reduce ? 0 : dashoffset }}
+      />
+    </svg>
+  );
+}
+
 function Eyebrow({ children, color = C.blue }) {
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 11.5, letterSpacing: '0.18em', textTransform: 'uppercase', color }}>
@@ -284,6 +353,13 @@ const reveal = {
   show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 0.9, 0.35, 1] } },
 };
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
+// Alternating left/right entrance instead of uniform bottom-up — one of the
+// small devices that makes the page feel like it has a direction, not just
+// a vertical stack of centered blocks.
+const revealDir = (dir) => ({
+  hidden: { opacity: 0, y: 18, x: dir * 26 },
+  show: { opacity: 1, y: 0, x: 0, transition: { duration: 0.6, ease: [0.16, 0.9, 0.35, 1] } },
+});
 
 function Reveal({ children, style, as = 'div' }) {
   const M = motion[as];
@@ -331,6 +407,8 @@ export default function Welcome() {
   return (
     <div className="ds-root">
       <style>{CSS}</style>
+      <Atmosphere />
+      <GrainlineThread />
 
       <header className="ds-bar">
         <div className="ds-bar-in">
@@ -384,8 +462,8 @@ export default function Welcome() {
             </div>
           </Reveal>
           <motion.div className="ds-index" variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-60px' }}>
-            {FEATURES.map(f => (
-              <motion.div key={f.n} variants={reveal}>
+            {FEATURES.map((f, i) => (
+              <motion.div key={f.n} variants={revealDir(i % 2 === 0 ? -1 : 1)}>
                 <TiltCard className="ds-cell">
                   <div className="ds-cell-n">{f.n}</div>
                   <h3 className="ds-cell-title">{f.title}</h3>
@@ -425,10 +503,10 @@ export default function Welcome() {
             </div>
           </Reveal>
           <motion.div className="ds-price" variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-60px' }}>
-            {PLANS.map(p => {
+            {PLANS.map((p, i) => {
               const feature = p.id === 'basic';
               return (
-                <motion.div key={p.id} variants={reveal}>
+                <motion.div key={p.id} variants={revealDir(i === 0 ? -1 : i === PLANS.length - 1 ? 1 : 0)}>
                   <TiltCard className={`ds-plan${feature ? ' ds-plan-feat' : ''}`} strength={feature ? 9 : 6}>
                     {feature && <div className="ds-plan-flag">Most chosen</div>}
                     <div className="ds-plan-name">{p.name}</div>
@@ -484,10 +562,26 @@ export default function Welcome() {
 }
 
 const CSS = `
-.ds-root { background: ${C.ink}; color: ${C.paper}; font-family: ${BODY};
+.ds-root { position: relative; background: ${C.ink}; color: ${C.paper}; font-family: ${BODY};
   min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
 .ds-root ::selection { background: ${C.blue}; color: ${C.ink}; }
 .ds-wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+
+/* atmosphere — fixed, full-bleed, sits behind every section */
+.ds-atmosphere { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.ds-aurora { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.4; mix-blend-mode: screen; }
+.ds-aurora-1 { width: 58vw; height: 58vw; top: -22%; left: -12%; background: radial-gradient(circle, ${C.blue}, transparent 70%); animation: ds-drift1 28s ease-in-out infinite; }
+.ds-aurora-2 { width: 48vw; height: 48vw; top: 28%; right: -16%; background: radial-gradient(circle, ${C.violet}, transparent 70%); animation: ds-drift2 34s ease-in-out infinite; }
+.ds-aurora-3 { width: 44vw; height: 44vw; bottom: -14%; left: 22%; background: radial-gradient(circle, ${C.coral}, transparent 70%); animation: ds-drift3 24s ease-in-out infinite; }
+@keyframes ds-drift1 { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(6%, 8%) scale(1.15); } }
+@keyframes ds-drift2 { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-8%, -6%) scale(1.12); } }
+@keyframes ds-drift3 { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(5%, -8%) scale(1.2); } }
+.ds-grain { position: absolute; inset: -10%; opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.ds-thread { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; opacity: 0.55; }
+
+/* everything else paints above the atmosphere + thread */
+.ds-bar, .ds-hero, .ds-mission, .ds-section, .ds-flow-sec, .ds-foot { position: relative; z-index: 2; }
 
 /* title bar */
 .ds-bar { position: sticky; top: 0; z-index: 40; background: rgba(10,12,17,0.72);
@@ -501,15 +595,24 @@ const CSS = `
 .ds-nav-link:hover { color: ${C.paper}; }
 
 /* buttons */
-.ds-btn { font-family: ${MONO}; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+.ds-btn { position: relative; isolation: isolate; font-family: ${MONO}; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   border: 1.5px solid transparent; border-radius: 4px; padding: 9px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
   text-decoration: none; transition: transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease, box-shadow .18s ease; }
 .ds-btn:active { transform: translateY(1px); }
 .ds-btn-lg { padding: 13px 22px; font-size: 13px; }
 .ds-btn-solid { background: ${C.paper}; color: ${C.ink}; border-color: ${C.paper}; }
 .ds-btn-solid:hover { background: ${C.blue}; border-color: ${C.blue}; color: ${C.ink}; }
-.ds-btn-holo { background: ${HOLO}; color: ${C.ink}; border-color: transparent; background-size: 220% 100%; background-position: 0% 0%; }
-.ds-btn-holo:hover { background-position: 100% 0%; box-shadow: 0 6px 28px -6px rgba(169,140,245,0.55); }
+/* "Expensive SaaS button": a solid dark face over a rotating conic-gradient
+   ring, instead of a flat gradient fill — the light chases the edge, the
+   face itself never changes color. */
+.ds-btn-holo { background: ${C.ink2}; color: ${C.paper}; border-color: transparent; }
+.ds-btn-holo::before { content: ''; position: absolute; inset: -60%; z-index: -1;
+  background: conic-gradient(${C.blue}, ${C.violet}, ${C.coral}, ${C.gold}, ${C.blue});
+  animation: ds-spin 5s linear infinite; }
+.ds-btn-holo::after { content: ''; position: absolute; inset: 1.5px; z-index: -1; border-radius: 3px; background: ${C.ink2}; transition: background .18s ease; }
+.ds-btn-holo:hover::after { background: ${C.ink3}; }
+.ds-btn-holo:hover { box-shadow: 0 8px 30px -8px rgba(169,140,245,0.6); }
+@keyframes ds-spin { to { transform: rotate(360deg); } }
 .ds-btn-line { background: transparent; color: ${C.paper}; border-color: ${C.lineBright}; }
 .ds-btn-line:hover { background: ${C.paper}; color: ${C.ink}; border-color: ${C.paper}; }
 .ds-btn-ghost { background: transparent; color: ${C.paperDim}; border-color: transparent; }
@@ -534,13 +637,27 @@ const CSS = `
 .ds-stage { position: absolute; inset: 0; perspective: 1500px; display: flex; align-items: center; justify-content: center; }
 .ds-scene { position: relative; width: min(920px, 92vw); height: 100%; transform-style: preserve-3d; }
 .ds-piece { transform-style: preserve-3d; will-change: transform; pointer-events: none; }
-.ds-piece-card { padding: 10px 10px 16px; border-radius: 10px; background: rgba(20,23,31,0.55);
-  border: 1px solid ${C.line}; backdrop-filter: blur(3px); box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7); }
+@keyframes ds-piece-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
+/* Real per-surface lighting instead of a flat glass panel: a two-layer
+   background paints a soft gradient rim-light border (brighter top-left,
+   like a real edge catching light), a specular highlight blob sits in the
+   corner, and a colored ambient glow (each piece's own accent, set via
+   --glow inline) grounds it in the scene under the plain drop shadow. */
+.ds-piece-card { position: relative; padding: 10px 10px 16px; border-radius: 10px;
+  background: linear-gradient(rgba(20,23,31,0.62), rgba(20,23,31,0.62)) padding-box,
+              linear-gradient(135deg, rgba(244,242,236,0.45), rgba(244,242,236,0.05) 35%, rgba(244,242,236,0.03) 65%, rgba(244,242,236,0.22)) border-box;
+  border: 1px solid transparent; backdrop-filter: blur(3px);
+  box-shadow: 0 30px 60px -30px rgba(0,0,0,0.75), 0 0 44px -14px var(--glow, transparent); }
+.ds-piece-card::before { content: ''; position: absolute; top: -14%; left: -8%; width: 55%; height: 45%;
+  background: radial-gradient(circle, rgba(255,255,255,0.3), transparent 72%); filter: blur(6px); pointer-events: none; }
 .ds-headline-3d { position: absolute; left: 28px; top: 12%; width: min(430px, 72vw); z-index: 4; }
 .ds-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${MONO}; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${C.blue}; margin-bottom: 18px; }
 .ds-h1 { font-family: ${DISPLAY}; font-weight: 900; font-size: clamp(34px, 4.8vw, 64px); line-height: 0.96;
   letter-spacing: -0.025em; text-transform: uppercase; margin: 0; color: ${C.paper}; text-shadow: 0 4px 40px rgba(0,0,0,0.5); }
-.ds-h1-holo { background: ${HOLO}; -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* A real backlit glow, not a gradient fill — layered colored text-shadows
+   read as light behind the letters instead of a flat rainbow printed on them. */
+.ds-h1-holo { color: ${C.paper};
+  text-shadow: 0 0 26px rgba(107,168,222,0.55), 0 0 52px rgba(169,140,245,0.4), 0 0 84px rgba(255,138,107,0.28); }
 .ds-lede { font-size: 14.5px; line-height: 1.58; color: ${C.paperDim}; max-width: 420px; margin: 16px 0 0; }
 .ds-cta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
 .ds-note { font-family: ${MONO}; font-size: 12px; color: ${C.paperFaint}; display: flex; align-items: center; gap: 9px; margin-top: 14px; }
@@ -559,8 +676,10 @@ const CSS = `
   display: flex; flex-wrap: wrap; gap: 12px 30px; }
 .ds-strip-item { font-family: ${MONO}; font-size: 12px; letter-spacing: 0.03em; color: ${C.paperDim}; display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase; }
 
-/* mission */
-.ds-mission { padding: 96px 0; background: radial-gradient(60% 100% at 50% 0%, rgba(169,140,245,0.06), transparent 60%); border-top: 1px solid ${C.line}; }
+/* mission — a diagonal clip instead of a flat rule, so the section break
+   itself carries direction rather than just stacking under the last one */
+.ds-mission { padding: 96px 0; background: radial-gradient(60% 100% at 50% 0%, rgba(169,140,245,0.06), transparent 60%);
+  clip-path: polygon(0 0, 100% 2.2%, 100% 100%, 0 97.8%); margin-bottom: -1px; }
 .ds-mission .ds-wrap { display: flex; flex-direction: column; gap: 26px; max-width: 900px; }
 .ds-mission-lead { font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 38px); line-height: 1.18; letter-spacing: -0.01em; color: ${C.paper}; }
 .ds-mission-body { font-size: clamp(18px, 2.2vw, 24px); line-height: 1.5; color: ${C.paperDim}; font-family: ${BODY}; }
@@ -584,8 +703,9 @@ const CSS = `
 .ds-cell-title { font-family: ${DISPLAY}; font-weight: 700; font-size: 16.5px; margin: 12px 0 8px; letter-spacing: -0.01em; color: ${C.paper}; }
 .ds-cell-text { font-size: 13px; line-height: 1.6; color: ${C.paperDim}; margin: 0; }
 
-/* flow rule */
-.ds-flow-sec { background: ${C.ink2}; border-top: 1px solid ${C.line}; border-bottom: 1px solid ${C.line}; }
+/* flow rule — clipped the opposite direction from the mission band above it,
+   so the two cuts read as a single zigzag running down the page */
+.ds-flow-sec { background: ${C.ink2}; clip-path: polygon(0 2.2%, 100% 0, 100% 100%, 0 97.8%); margin: -1px 0; }
 .ds-rule { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding-top: 26px; }
 .ds-rule-line { position: absolute; top: 26px; left: 0; right: 0; height: 2px; background: ${C.line}; }
 .ds-rule-stop { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
@@ -598,7 +718,7 @@ const CSS = `
 .ds-plan { border-radius: 10px; background: ${C.ink2}; border: 1.5px solid ${C.line}; }
 .ds-plan .ds-tilt-inner { padding: 26px 24px; display: flex; flex-direction: column; height: 100%; position: relative; }
 .ds-plan-feat { background: linear-gradient(160deg, ${C.ink3}, ${C.ink2}); border-color: ${C.violet}55; box-shadow: 0 30px 60px -34px rgba(169,140,245,0.5); }
-.ds-plan-flag { position: absolute; top: -12px; left: 0; font-family: ${MONO}; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: ${HOLO}; color: ${C.ink}; padding: 4px 10px; border-radius: 3px; }
+.ds-plan-flag { position: absolute; top: -12px; left: 0; font-family: ${MONO}; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; background: ${C.violet}; color: ${C.ink}; padding: 4px 10px; border-radius: 3px; box-shadow: 0 4px 18px -4px ${C.violet}aa; }
 .ds-plan-name { font-family: ${DISPLAY}; font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: -0.01em; color: ${C.paper}; }
 .ds-plan-tag { font-size: 12.5px; color: ${C.paperFaint}; margin-top: 4px; }
 .ds-plan-price { display: flex; align-items: baseline; gap: 5px; margin: 18px 0; }
@@ -611,7 +731,7 @@ const CSS = `
 
 /* final cta */
 .ds-final { position: relative; background: ${C.ink2}; border: 1.5px solid ${C.line}; border-radius: 10px; padding: 60px 40px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; overflow: hidden; }
-.ds-final::before { content: ''; position: absolute; inset: -40%; background: ${HOLO}; opacity: 0.08; filter: blur(60px); }
+.ds-final::before { content: ''; position: absolute; inset: -40%; background: radial-gradient(55% 55% at 28% 15%, ${C.violet}, transparent 70%); opacity: 0.16; filter: blur(60px); }
 .ds-final-h { position: relative; font-family: ${DISPLAY}; font-weight: 800; font-size: clamp(24px, 3.4vw, 36px); text-transform: uppercase; letter-spacing: -0.02em; line-height: 1.08; margin: 4px 0 0; max-width: 560px; color: ${C.paper}; }
 .ds-final-p { position: relative; font-size: 14.5px; color: ${C.paperDim}; max-width: 460px; margin: 0 0 8px; line-height: 1.6; }
 
