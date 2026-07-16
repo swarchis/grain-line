@@ -197,6 +197,8 @@ export function ProductsProvider({ children }) {
     return updateProduct(id, { is_favorite: !current.is_favorite });
   };
 
+}
+
   // designs.status ('Sketching'/'Refining'/'Ready') was previously only ever
   // written once, at creation — nothing in the app ever moved a design
   // forward, so it silently stuck at "Sketching" forever. Powers the new
@@ -220,15 +222,23 @@ export function ProductsProvider({ children }) {
     // 1. Clean up Supabase Storage before deleting the DB row
     try {
       const pathsToDelete = [];
+      
+      // Get Tech Pack Images
       const { data: tp } = await supabase.from('tech_packs').select('image_url').eq('product_id', id).maybeSingle();
       if (tp?.image_url) pathsToDelete.push(tp.image_url.split('/').pop());
 
+      // Get Design Version Images
       const { data: dv } = await supabase.from('design_versions').select('image_url').eq('product_id', id);
       (dv || []).forEach(v => v.image_url && pathsToDelete.push(v.image_url.split('/').pop()));
 
+      // Get Moodboard and Design Variant Images
       const { data: d } = await supabase.from('designs').select('variants, moodboard').eq('product_id', id).maybeSingle();
       (d?.variants || []).forEach(v => v.url && pathsToDelete.push(v.url.split('/').pop()));
       (d?.moodboard || []).forEach(m => m.url && pathsToDelete.push(m.url.split('/').pop()));
+
+      // NEW: Get Media Bin Product Assets
+      const { data: pa } = await supabase.from('product_assets').select('file_url').eq('product_id', id);
+      (pa || []).forEach(a => a.file_url && pathsToDelete.push(a.file_url.split('/').pop()));
 
       if (pathsToDelete.length > 0) {
         await supabase.storage.from('mockups').remove(pathsToDelete);
@@ -236,18 +246,6 @@ export function ProductsProvider({ children }) {
     } catch (cleanupErr) {
       console.error('Failed to cleanup storage, but continuing with product deletion:', cleanupErr);
     }
-
-    // 2. Delete the DB row (cascades to related tables automatically)
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) throw error;
-    setProducts(prev => prev.filter(p => p.id !== id));
-    setDesigns(prev => {
-      if (!(id in prev)) return prev;
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
 
   const createCategory = async (name) => {
     if (!activeBrand) throw new Error('No active brand');
