@@ -120,10 +120,17 @@ export default function DesignDetail() {
 
   const svgMarkup = useMemo(() => {
     if (!design || design.baseType === 'upload') return null;
-    if (design.baseType === 'ai-silhouette' && design.aiPaths?.paths?.length) {
-      return renderToStaticMarkup(<CustomSilhouette paths={design.aiPaths.paths} accents={design.aiPaths.accents} size={900} strokeWidth={4} color="#1a1a1a" />);
+    if (design.baseType === 'ai-silhouette') {
+      // Legacy designs generated before "Generate silhouette" switched to real
+      // AI image generation still carry vector path data — render those from
+      // the stored paths. Newer ones are a raster image (an actual generated
+      // sketch, not guessed SVG coordinates) handled via the `file` prop below,
+      // same as an uploaded mockup.
+      return design.aiPaths?.paths?.length
+        ? renderToStaticMarkup(<CustomSilhouette paths={design.aiPaths.paths} accents={design.aiPaths.accents} size={900} strokeWidth={0.3} color="#1a1a1a" />)
+        : null;
     }
-    return renderToStaticMarkup(<GarmentSilhouette type={design.silhouette || 'tee'} size={900} strokeWidth={4} color="#1a1a1a" />);
+    return renderToStaticMarkup(<GarmentSilhouette type={design.silhouette || 'tee'} size={900} strokeWidth={0.3} color="#1a1a1a" />);
   }, [design]);
 
   // Native Fullscreen Listener: Synchronizes the UI state instantly

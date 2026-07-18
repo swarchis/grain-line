@@ -10,6 +10,7 @@ import { useDragAndDrop } from '../lib/useDragAndDrop.js';
 import BulkActionBar from '../components/BulkActionBar.jsx';
 import { ContextMenuTarget } from '../components/ContextMenu.jsx';
 import { SkeletonCard } from '../components/Skeleton.jsx';
+import { base64ToBlob } from '../lib/designImages.js';
 
 const STATUS_COLOR = { Sketching: 'var(--ink-3)', Refining: 'var(--c-design)', Ready: 'var(--green)' };
 const DESIGN_STATUSES = ['Sketching', 'Refining', 'Ready'];
@@ -131,16 +132,18 @@ export default function Design() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-silhouette`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/generate-element`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ garmentType }),
+        body: JSON.stringify({ mode: 'silhouette', prompt: garmentType }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('silhouette');
 
-      const id = await createDesign({ garmentType, baseType: 'ai-silhouette', aiPaths: { paths: data.paths, accents: data.accents } });
+      const blob = await base64ToBlob(data.imageBase64, data.mimeType);
+      const file = new File([blob], `${garmentType}-silhouette.png`, { type: data.mimeType || 'image/png' });
+      const id = await createDesign({ garmentType, baseType: 'ai-silhouette', file });
       navigate(`/design/${id}`);
     } catch (err) {
       setGenerateError(err.message || 'Could not generate a silhouette for that garment type.');

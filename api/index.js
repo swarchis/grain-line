@@ -142,7 +142,7 @@ async function callGeminiImage(prompt, imageInputsBase64 = []) {
 // insufficient-balance 403, while base SDXL succeeds with the same key.
 const PIXAZO_SDXL_URL = 'https://gateway.pixazo.ai/getImage/v1/getSDXLImage';
 
-async function callPixazoElement(prompt) {
+async function callPixazoElement(prompt, extraNegative = '') {
   if (!process.env.PIXAZO_API_KEY) {
     throw new Error('PIXAZO_API_KEY is not set in api/.env — get one at api-console.pixazo.ai.');
   }
@@ -153,7 +153,7 @@ async function callPixazoElement(prompt) {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Ocp-Apim-Subscription-Key': process.env.PIXAZO_API_KEY },
     body: JSON.stringify({
       prompt: fullPrompt,
-      negativePrompt: 'photo, photorealistic, background scene, shadow, gradient background, texture background, watermark, text, frame, border',
+      negativePrompt: `photo, photorealistic, background scene, shadow, gradient background, texture background, watermark, text, frame, border${extraNegative ? ', ' + extraNegative : ''}`,
       height: 1024,
       width: 1024,
     }),
@@ -284,45 +284,6 @@ Return a JSON object with exactly this structure (every array can be empty if ge
   }
 });
 
-app.post('/api/generate-silhouette', async (req, res) => {
-  console.log("📥 Received silhouette generation request...");
-  try {
-    const { garmentType } = req.body;
-    if (!garmentType || !garmentType.trim()) return res.status(400).json({ ok: false, error: 'No garment type provided' });
-
-    const prompt = `You are a technical fashion illustrator drawing a flat, symmetric garment silhouette outline for the garment type: "${garmentType.trim()}".
-
-Style rules — match these exactly, this must look like a simple technical flat, not clip art:
-- Output SVG path "d" strings only, meant to be drawn in a 60×72 viewBox, stroke-only (no fill), centered in the frame with a small margin.
-- Keep it to 1-3 paths total: one closed outline path for the garment's overall shape, and optionally 1-2 simple interior detail paths (a seam line, a neckline curve, a strap) — nothing decorative or textured.
-- Use simple curves (Q or C commands) and lines (L), the way a garment technical flat is drawn — no more than ~12 path commands per path.
-- The shape must be a plausible, recognizable silhouette of "${garmentType.trim()}" as worn/laid flat, front view.
-- If the garment has small fixed points worth marking (e.g. button positions), you may include up to 2 small accent dots as {"cx","cy","r"} objects with r between 1 and 2.
-
-Return ONLY a JSON object with exactly this structure:
-{
-  "paths": ["<svg path d string>", "<svg path d string>"],
-  "accents": [{"cx": <number>, "cy": <number>, "r": <number>}]
-}
-"accents" may be an empty array. Do not include any commentary, only the JSON object.`;
-
-    const result = await callGemini(prompt);
-    if (!Array.isArray(result.paths) || result.paths.length === 0 || result.paths.length > 3) {
-      throw new Error('AI returned an unusable silhouette — try rephrasing the garment type.');
-    }
-    const paths = result.paths.filter(p => typeof p === 'string' && p.length > 0 && p.length < 500);
-    if (paths.length === 0) throw new Error('AI returned an unusable silhouette — try rephrasing the garment type.');
-    const accents = Array.isArray(result.accents)
-      ? result.accents.filter(a => a && typeof a.cx === 'number' && typeof a.cy === 'number' && typeof a.r === 'number').slice(0, 2)
-      : [];
-
-    console.log("✅ Silhouette generation successful");
-    res.json({ ok: true, paths, accents });
-  } catch (error) {
-    console.error('❌ Endpoint Error:', error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
 
 // ---------------------------------------------------------
 // 2. VENDOR SOURCING & OUTREACH ENDPOINTS
@@ -1391,6 +1352,17 @@ app.post('/api/design/ai-image', async (req, res) => {
 const ELEMENT_MODE_PROMPTS = {
   'add-element': (p) => p || 'a simple minimalist icon',
   'pattern': (p) => `a seamless, tileable, repeating textile pattern: ${p || 'an abstract pattern'}`,
+  // Used for Design.jsx's "Generate silhouette" (custom garment types outside
+  // the 9 hand-drawn presets). An earlier version had Gemini guess raw SVG
+  // path coordinates for this, which is a spatial-reasoning task text models
+  // are bad at blind — results were unrecognizable for anything but the
+  // simplest shapes. An actual image model reasons in pixel space, so it's
+  // structurally better suited to rendering a coherent garment outline.
+  'silhouette': (p) => `a technical fashion flat sketch of a ${p || 'garment'}, laid flat, front view, symmetric, black ink line drawing only, thin uniform line weight, spec-sheet CAD illustration style`,
+};
+
+const ELEMENT_MODE_EXTRA_NEGATIVE = {
+  'silhouette': 'color, fabric texture, painting, 3d render, photorealistic render, model, mannequin, shading, gradient, sketch shading, cross-hatching',
 };
 
 app.post('/api/design/generate-element', async (req, res) => {
@@ -1399,7 +1371,7 @@ app.post('/api/design/generate-element', async (req, res) => {
     const { mode, prompt } = req.body;
     const builder = ELEMENT_MODE_PROMPTS[mode];
     if (!builder) return res.status(400).json({ ok: false, error: 'Unknown element mode: ' + mode });
-    const result = await callPixazoElement(builder(prompt));
+    const result = await callPixazoElement(builder(prompt), ELEMENT_MODE_EXTRA_NEGATIVE[mode] || '');
     console.log("✅ Element generation successful:", mode);
     res.json({ ok: true, imageBase64: result.base64, mimeType: result.mimeType });
   } catch (error) {
