@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import GarmentSilhouette, { CustomSilhouette } from '../components/GarmentSilhouette.jsx';
+import GarmentSilhouette, { CustomSilhouette, VectorSilhouette } from '../components/GarmentSilhouette.jsx';
 import PhotopeaEditor from '../components/PhotopeaEditor.jsx';
 import FlowStepper from '../components/FlowStepper.jsx';
 import TabBar from '../components/TabBar.jsx';
@@ -118,13 +118,49 @@ export default function DesignDetail() {
     setTab('canvas');
   };
 
-  const svgMarkup = useMemo(() => {
-    if (!design || design.baseType === 'upload') return null;
-    if (design.baseType === 'ai-silhouette' && design.aiPaths?.paths?.length) {
-      return renderToStaticMarkup(<CustomSilhouette paths={design.aiPaths.paths} accents={design.aiPaths.accents} size={900} strokeWidth={4} color="#1a1a1a" />);
+  const [templateFile, setTemplateFile] = useState(null);
+  const [svgFallback, setSvgFallback] = useState(null);
+
+  useEffect(() => {
+    if (!design || design.baseType === 'upload') {
+      setTemplateFile(null);
+      setSvgFallback(null);
+      return;
     }
-    return renderToStaticMarkup(<GarmentSilhouette type={design.silhouette || 'tee'} size={900} strokeWidth={4} color="#1a1a1a" />);
-  }, [design]);
+
+    // AI generated paths are purely SVG
+    if (design.baseType === 'ai-silhouette' && design.aiPaths?.paths?.length) {
+      setSvgFallback(renderToStaticMarkup(
+        <CustomSilhouette paths={design.aiPaths.paths} accents={design.aiPaths.accents} size={900} strokeWidth={4} color="#1a1a1a" />
+      ));
+      setTemplateFile(null);
+      return;
+    }
+
+    const type = design.silhouette || 'tee';
+    let cancelled = false;
+
+    // Attempt to load the Custom jpeg. If it fails, fall back to the Vector shapes.
+    fetch(`/silhouettes/${type}.jpeg`)
+      .then(res => {
+        if (!res.ok) throw new Error('Not found');
+        return res.blob();
+      })
+      .then(blob => {
+        if (cancelled) return;
+        setTemplateFile(new File([blob], `${type}.jpeg`, { type: 'image/jpeg' }));
+        setSvgFallback(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSvgFallback(renderToStaticMarkup(
+          <VectorSilhouette type={type} size={900} strokeWidth={4} color="#1a1a1a" />
+        ));
+        setTemplateFile(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [design?.silhouette, design?.baseType, design?.aiPaths]);
 
   // Native Fullscreen Listener: Synchronizes the UI state instantly
   // even if the user exits fullscreen using the physical Escape key.
@@ -220,10 +256,10 @@ export default function DesignDetail() {
       }
 
       // 1. UPLOAD IMAGE TO SUPABASE STORAGE
-      const fileName = `${id}-${Date.now()}.png`;
+      const fileName = `${id}-${Date.now()}.jpeg`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('mockups')
-        .upload(fileName, blobToUpload, { contentType: 'image/png', upsert: true });
+        .upload(fileName, blobToUpload, { contentType: 'image/jpeg', upsert: true });
 
       if (uploadError) throw new Error("Image Upload Failed: " + uploadError.message);
 
@@ -266,7 +302,7 @@ export default function DesignDetail() {
     try {
       const url = await photopeaRef.current.capture();
       const blob = await fetch(url).then(r => r.blob());
-      setRestoreFile(new File([blob], 'canvas.png', { type: 'image/png' }));
+      setRestoreFile(new File([blob], 'canvas.jpeg', { type: 'image/jpeg' }));
     } catch {}
     setToggling(false);
 
@@ -468,8 +504,8 @@ export default function DesignDetail() {
                 </div>
                 <PhotopeaEditor 
                   ref={photopeaRef} 
-                  svgMarkup={restoreFile ? null : svgMarkup} 
-                  file={restoreFile || uploadedFile} 
+                  svgMarkup={restoreFile ? null : svgFallback} 
+                  file={restoreFile || uploadedFile || templateFile} 
                   onStatusChange={setCanvasStatus} 
                 />
               </div>

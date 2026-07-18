@@ -158,6 +158,15 @@
   --shadow-lg:    0 22px 55px -18px rgba(0,0,0,0.6);
 }
 
+.silhouette-img {
+  mix-blend-mode: multiply;
+}
+
+[data-theme="dark"] .silhouette-img {
+  filter: invert(1) brightness(1.5);
+  mix-blend-mode: screen;
+}
+
 /* ── Reset ────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-text-size-adjust: 100%; }
