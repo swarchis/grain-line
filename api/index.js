@@ -169,17 +169,56 @@ async function callPixazoElement(prompt, extraNegative = '') {
 
   // Fetch the generated PNG/WebP and punch the near-white background out to
   // real alpha transparency — SD has no native transparency output, so a
-  // solid white background (per the prompt above) plus a simple threshold
-  // is the practical way to get something that behaves like a layer instead
-  // of a flat rectangle when it's added to the canvas.
+  // solid white background (per the prompt above) is the practical way to
+  // get something that behaves like a layer instead of a flat rectangle
+  // when it's added to the canvas.
   const imgRes = await fetch(imageUrl);
   const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
   const { data: pixels, info } = await sharp(imgBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  for (let i = 0; i < pixels.length; i += 4) {
-    if (pixels[i] > 240 && pixels[i + 1] > 240 && pixels[i + 2] > 240) pixels[i + 3] = 0;
-  }
+  floodFillTransparentBackground(pixels, info.width, info.height);
   const pngBuffer = await sharp(pixels, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
   return { base64: pngBuffer.toString('base64'), mimeType: 'image/png' };
+}
+
+// A flat per-pixel "near-white → transparent" threshold (the previous
+// approach) punches out ANY light pixel in the image, including enclosed
+// white regions that are actually part of the subject — a shoe's light
+// leather panels, a logo's white negative space, a sketch's unshaded
+// highlights. That's why generations came back with holes inside the
+// artwork, not just around it. Flood-filling from the image border instead
+// only removes white that's actually connected to the background, leaving
+// any white fully enclosed by darker linework untouched.
+function floodFillTransparentBackground(pixels, width, height, threshold = 240) {
+  const isNearWhite = (pixelIdx) => {
+    const i = pixelIdx * 4;
+    return pixels[i] > threshold && pixels[i + 1] > threshold && pixels[i + 2] > threshold;
+  };
+
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let qHead = 0, qTail = 0;
+
+  const seed = (x, y) => {
+    const p = y * width + x;
+    if (visited[p] || !isNearWhite(p)) return;
+    visited[p] = 1;
+    queue[qTail++] = p;
+  };
+
+  for (let x = 0; x < width; x++) { seed(x, 0); seed(x, height - 1); }
+  for (let y = 0; y < height; y++) { seed(0, y); seed(width - 1, y); }
+
+  while (qHead < qTail) {
+    const p = queue[qHead++];
+    const x = p % width;
+    const y = (p - x) / width;
+    pixels[p * 4 + 3] = 0;
+
+    if (x + 1 < width) seed(x + 1, y);
+    if (x - 1 >= 0) seed(x - 1, y);
+    if (y + 1 < height) seed(x, y + 1);
+    if (y - 1 >= 0) seed(x, y - 1);
+  }
 }
 
 // ---------------------------------------------------------
