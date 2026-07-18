@@ -180,18 +180,37 @@ async function callPixazoElement(prompt, extraNegative = '') {
   return { base64: pngBuffer.toString('base64'), mimeType: 'image/png' };
 }
 
-// A flat per-pixel "near-white → transparent" threshold (the previous
-// approach) punches out ANY light pixel in the image, including enclosed
+// A flat per-pixel "near-white → transparent" threshold (the first attempt
+// at this) punches out ANY light pixel in the image, including enclosed
 // white regions that are actually part of the subject — a shoe's light
 // leather panels, a logo's white negative space, a sketch's unshaded
-// highlights. That's why generations came back with holes inside the
-// artwork, not just around it. Flood-filling from the image border instead
-// only removes white that's actually connected to the background, leaving
-// any white fully enclosed by darker linework untouched.
-function floodFillTransparentBackground(pixels, width, height, threshold = 240) {
-  const isNearWhite = (pixelIdx) => {
+// highlights. Flood-filling from the image border instead only removes
+// background that's actually connected to the edge, leaving anything
+// enclosed by darker linework untouched.
+//
+// A *fixed* whiteness cutoff still isn't enough on its own, though — Pixazo's
+// SD backend frequently ignores "plain white background" and returns a
+// light-gray one instead (seen as low as rgb(226,228,227), comfortably
+// below a naive >240 cutoff), which left the entire image opaque: a solid
+// pale rectangle with the real artwork lost inside it, not a transparent
+// layer. Sampling the actual border color per-generation and flood-filling
+// by color distance from THAT, rather than assuming pure white, adapts to
+// whatever background shade this particular generation actually came back
+// with.
+function floodFillTransparentBackground(pixels, width, height, tolerance = 28) {
+  let rSum = 0, gSum = 0, bSum = 0, n = 0;
+  const sampleBorder = (x, y) => {
+    const i = (y * width + x) * 4;
+    rSum += pixels[i]; gSum += pixels[i + 1]; bSum += pixels[i + 2]; n++;
+  };
+  for (let x = 0; x < width; x += 4) { sampleBorder(x, 0); sampleBorder(x, height - 1); }
+  for (let y = 0; y < height; y += 4) { sampleBorder(0, y); sampleBorder(width - 1, y); }
+  const bgR = rSum / n, bgG = gSum / n, bgB = bSum / n;
+
+  const isBackgroundColor = (pixelIdx) => {
     const i = pixelIdx * 4;
-    return pixels[i] > threshold && pixels[i + 1] > threshold && pixels[i + 2] > threshold;
+    const dr = pixels[i] - bgR, dg = pixels[i + 1] - bgG, db = pixels[i + 2] - bgB;
+    return Math.sqrt(dr * dr + dg * dg + db * db) < tolerance;
   };
 
   const visited = new Uint8Array(width * height);
@@ -200,7 +219,7 @@ function floodFillTransparentBackground(pixels, width, height, threshold = 240) 
 
   const seed = (x, y) => {
     const p = y * width + x;
-    if (visited[p] || !isNearWhite(p)) return;
+    if (visited[p] || !isBackgroundColor(p)) return;
     visited[p] = 1;
     queue[qTail++] = p;
   };
