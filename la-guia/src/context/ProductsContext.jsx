@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from './AuthContext.jsx';
+import { uploadDesignImage } from '../lib/designImages.js';
 
 const ProductsContext = createContext(null);
 
@@ -285,6 +286,27 @@ export function ProductsProvider({ children }) {
       if (histErr) console.error('Failed to log stage history', histErr);
     });
 
+    // Duplicate deliberately doesn't clone the tech pack or AI Studio version
+    // history (those are meant to be built fresh for the copy) — but that
+    // left every duplicate with no photo at all until one of those flows ran
+    // again, even though the copy visually IS the original at the moment of
+    // copying. Carry over just the latest existing image as a starting point
+    // (same underlying storage object, not re-uploaded) rather than leaving
+    // an obviously-not-empty product showing the "no photo yet" placeholder.
+    (async () => {
+      const { data: latestVersion } = await supabase.from('design_versions').select('image_url').eq('product_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      let imageUrl = latestVersion?.image_url || null;
+      if (!imageUrl) {
+        const { data: tp } = await supabase.from('tech_packs').select('image_url').eq('product_id', id).maybeSingle();
+        imageUrl = tp?.image_url || null;
+      }
+      if (imageUrl) {
+        await supabase.from('design_versions').insert([{
+          product_id: newProduct.id, image_url: imageUrl, label: 'Copied from original', source: 'duplicate',
+        }]);
+      }
+    })().catch(err => console.error('Failed to carry over duplicate image', err));
+
     setProducts(prev => [newProduct, ...prev]);
     return newProduct.id;
   };
@@ -394,7 +416,19 @@ export function ProductsProvider({ children }) {
       if (histErr) console.error('Failed to log stage history', histErr);
     });
 
-    if (file) uploadedFiles.current.set(productData.id, file);
+    if (file) {
+      uploadedFiles.current.set(productData.id, file);
+      // Persist the design's starting image immediately — previously nothing
+      // wrote to storage until an explicit tech pack cover or AI Studio
+      // "save as version" happened, so a freshly created design (upload or
+      // AI silhouette) had no real photo anywhere and Home's featured card
+      // fell back to the honest placeholder for what could be a long time.
+      uploadDesignImage(file, productData.id, baseType === 'upload' ? 'upload' : 'silhouette')
+        .then(url => supabase.from('design_versions').insert([{
+          product_id: productData.id, image_url: url, label: 'Initial design', source: baseType,
+        }]))
+        .catch(err => console.error('Failed to persist initial design image', err));
+    }
 
     setProducts(prev => [productData, ...prev]);
     setDesigns(prev => ({
