@@ -52,12 +52,14 @@ export function NeedleA({ size = 26, color = '#F4F2EC', className, style }) {
 export default function IntroGate({ onDone }) {
   const overlayRef = useRef(null);
   const canvasRef = useRef(null);
+  const flatLogoRef = useRef(null);
   const leavingRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const overlay = overlayRef.current;
     const canvas = canvasRef.current;
+    const flatLogo = flatLogoRef.current;
     if (!overlay || !canvas) return undefined;
 
     document.body.style.overflow = 'hidden';
@@ -103,6 +105,7 @@ export default function IntroGate({ onDone }) {
       new THREE.PlaneGeometry(2, 2),
       new THREE.ShaderMaterial({
         uniforms: bgUniforms,
+        transparent: true,
         depthTest: false, depthWrite: false,
         vertexShader: `
           varying vec2 vUv;
@@ -133,7 +136,7 @@ export default function IntroGate({ onDone }) {
             // front of the field rather than dissolving into it
             float vig = smoothstep(0.15, 0.95, length(p));
             c *= mix(0.55, 1.0, vig);
-            gl_FragColor = vec4(c * uFade, 1.0);
+            gl_FragColor = vec4(c * uFade, uFade);
           }`,
       }),
     );
@@ -217,11 +220,13 @@ export default function IntroGate({ onDone }) {
     };
 
     let disposed = false;
+    let logoModel = null;
     new GLTFLoader().load(
       '/intro/logo.glb',
       (gltf) => {
         if (disposed) return;
         const model = gltf.scene;
+        logoModel = model;
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
@@ -282,8 +287,20 @@ export default function IntroGate({ onDone }) {
     const clock = new THREE.Clock();
     let popIn = 0, energy = 0, prevRotY = FACE_ROT, prevRotX = 0;
 
-    // fly-to-corner state (filled on click)
-    const fly = { active: false, prog: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), scaleFrom: 1, scaleTo: 0.12 };
+    // click exit: quick spin, reveal the site under the same letter, then fly.
+    const exit = { active: false, start: 0, spinDuration: 0.62, flyStarted: false };
+
+    // fly-to-corner state (filled after the click spin)
+    const fly = {
+      active: false,
+      prog: 0,
+      from: new THREE.Vector3(),
+      to: new THREE.Vector3(),
+      scaleFrom: 1,
+      scaleTo: 0.12,
+      rotFrom: new THREE.Euler(),
+      rotTo: new THREE.Euler(0, FACE_ROT, 0),
+    };
 
     const worldAtScreen = (sx, sy) => {
       const halfH = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
@@ -293,6 +310,29 @@ export default function IntroGate({ onDone }) {
         -((sy / window.innerHeight) * 2 - 1) * halfH,
         0,
       );
+    };
+
+    const screenRectForObject = (obj) => {
+      obj.updateWorldMatrix(true, true);
+      camera.updateMatrixWorld();
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty()) return null;
+      const min = box.min, max = box.max;
+      const corners = [
+        new THREE.Vector3(min.x, min.y, min.z),
+        new THREE.Vector3(min.x, min.y, max.z),
+        new THREE.Vector3(min.x, max.y, min.z),
+        new THREE.Vector3(min.x, max.y, max.z),
+        new THREE.Vector3(max.x, min.y, min.z),
+        new THREE.Vector3(max.x, min.y, max.z),
+        new THREE.Vector3(max.x, max.y, min.z),
+        new THREE.Vector3(max.x, max.y, max.z),
+      ].map((v) => v.project(camera));
+      const xs = corners.map((v) => (v.x * 0.5 + 0.5) * window.innerWidth);
+      const ys = corners.map((v) => (-v.y * 0.5 + 0.5) * window.innerHeight);
+      const left = Math.min(...xs), right = Math.max(...xs);
+      const top = Math.min(...ys), bottom = Math.max(...ys);
+      return { left, top, width: right - left, height: bottom - top };
     };
 
     const animate = () => {
@@ -310,15 +350,27 @@ export default function IntroGate({ onDone }) {
 
         if (!fly.active) {
           group.scale.setScalar(eased);
-          holder.rotation.y = FACE_ROT + ptr.x * 0.7 + Math.sin(t * 0.4) * 0.14;
-          holder.rotation.x = -ptr.y * 0.35 + Math.cos(t * 0.5) * 0.06;
-          group.position.set(0, Math.sin(t * 0.9) * 0.07, 0);
+          if (exit.active) {
+            const p = Math.min(1, (t - exit.start) / exit.spinDuration);
+            const spinEase = 1 - Math.pow(1 - p, 3);
+            holder.rotation.y = FACE_ROT + spinEase * Math.PI * 4;
+            holder.rotation.x = Math.sin(spinEase * Math.PI) * 0.42;
+            holder.rotation.z = Math.sin(spinEase * Math.PI) * 0.5;
+            group.position.set(0, Math.sin(t * 0.9) * 0.035, 0);
+          } else {
+            holder.rotation.y = FACE_ROT + ptr.x * 0.7 + Math.sin(t * 0.4) * 0.14;
+            holder.rotation.x = -ptr.y * 0.35 + Math.cos(t * 0.5) * 0.06;
+            holder.rotation.z = 0;
+            group.position.set(0, Math.sin(t * 0.9) * 0.07, 0);
+          }
         } else {
           fly.prog = Math.min(1, fly.prog + dt / 1.0);
           const e = 1 - Math.pow(1 - fly.prog, 3);
           group.position.lerpVectors(fly.from, fly.to, e);
           group.scale.setScalar(THREE.MathUtils.lerp(fly.scaleFrom, fly.scaleTo, e));
-          holder.rotation.y = FACE_ROT + ptr.x * 0.7 + t * 0.6 * (1 - e);
+          holder.rotation.x = THREE.MathUtils.lerp(fly.rotFrom.x, fly.rotTo.x, e);
+          holder.rotation.y = THREE.MathUtils.lerp(fly.rotFrom.y, fly.rotTo.y, e);
+          holder.rotation.z = THREE.MathUtils.lerp(fly.rotFrom.z, fly.rotTo.z, e);
         }
       }
 
@@ -331,6 +383,25 @@ export default function IntroGate({ onDone }) {
       bgUniforms.uEnergy.value = energy;
       bgUniforms.uSpin.value = holder.rotation.y - FACE_ROT;
       bgUniforms.uMove.value.set(ptr.x, ptr.y);
+      if (exit.active) {
+        const age = t - exit.start;
+        const fadeProg = Math.min(1, age / 0.7);
+        bgUniforms.uFade.value = 1 - (1 - Math.pow(1 - fadeProg, 3));
+
+        if (!exit.flyStarted && age >= exit.spinDuration) {
+          exit.flyStarted = true;
+          const mark = document.querySelector('.ds-brand-a');
+          const m = mark ? mark.getBoundingClientRect() : { left: 40, top: 20, width: 30, height: 30 };
+          fly.from.copy(group.position);
+          fly.to.copy(worldAtScreen(m.left + m.width / 2, m.top + m.height / 2));
+          const halfH = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
+          const targetWorldH = (m.height / window.innerHeight) * 2 * halfH;
+          fly.scaleFrom = group.scale.x;
+          fly.scaleTo = Math.max(0.06, (targetWorldH / 2.6) * 1.4);
+          fly.rotFrom.copy(holder.rotation);
+          fly.active = true;
+        }
+      }
       cursorRipple.uRippleTime.value = t;
       cursorRipple.uCursorWorld.value.copy(worldAtScreen(
         ((ptr.x + 1) / 2) * window.innerWidth,
@@ -352,6 +423,7 @@ export default function IntroGate({ onDone }) {
     animate();
 
     const finish = () => {
+      document.body.classList.remove('ds-gate-morphing', 'ds-gate-logo-landed');
       document.body.style.overflow = '';
       onDone();
     };
@@ -359,19 +431,43 @@ export default function IntroGate({ onDone }) {
     const onClick = () => {
       if (leavingRef.current || !holder.children.length) return;
       leavingRef.current = true;
-      const mark = document.querySelector('.ds-brand-a');
-      const m = mark ? mark.getBoundingClientRect() : { left: 40, top: 20, width: 30, height: 30 };
-      fly.from.copy(group.position);
-      fly.to.copy(worldAtScreen(m.left + m.width / 2, m.top + m.height / 2));
-      // shrink so the flying A ≈ the header mark's height
-      const halfH = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
-      const targetWorldH = (m.height / window.innerHeight) * 2 * halfH;
-      fly.scaleFrom = group.scale.x;
-      fly.scaleTo = Math.max(0.06, (targetWorldH / 2.6) * 1.4);
-      fly.active = true;
-
+      document.body.classList.add('ds-gate-morphing');
+      exit.active = true;
+      exit.start = clock.getElapsedTime();
       overlay.classList.add('ds-gate-leave');
-      setTimeout(finish, 1150);
+      window.setTimeout(() => {
+        if (!flatLogo) return;
+        const mark = document.querySelector('.ds-brand-a');
+        const m = mark ? mark.getBoundingClientRect() : { left: 40, top: 20, width: 30, height: 30 };
+        const letterRect = screenRectForObject(logoModel || holder);
+        const startSize = letterRect
+          ? Math.max(letterRect.width, letterRect.height)
+          : Math.min(window.innerWidth, window.innerHeight) * 0.62;
+        const startLeft = letterRect
+          ? letterRect.left + (letterRect.width - startSize) / 2
+          : (window.innerWidth - startSize) / 2;
+        const startTop = letterRect
+          ? letterRect.top + (letterRect.height - startSize) / 2
+          : (window.innerHeight - startSize) / 2;
+        const dx = m.left + m.width / 2 - (startLeft + startSize / 2);
+        const dy = m.top + m.height / 2 - (startTop + startSize / 2);
+        const scale = Math.max(0.04, m.height / startSize);
+        flatLogo.style.setProperty('--gate-logo-size', `${startSize}px`);
+        flatLogo.style.setProperty('--gate-logo-left', `${startLeft}px`);
+        flatLogo.style.setProperty('--gate-logo-top', `${startTop}px`);
+        flatLogo.style.setProperty('--gate-logo-x', `${dx}px`);
+        flatLogo.style.setProperty('--gate-logo-y', `${dy}px`);
+        flatLogo.style.setProperty('--gate-logo-scale', String(scale));
+        overlay.classList.add('ds-gate-flat-ready');
+      }, 620);
+      window.setTimeout(() => {
+        overlay.classList.add('ds-gate-flat-fly');
+      }, 1250);
+      window.setTimeout(() => {
+        document.body.classList.add('ds-gate-logo-landed');
+        overlay.classList.add('ds-gate-flat-landed');
+      }, 2500);
+      setTimeout(finish, 2900);
     };
     overlay.addEventListener('click', onClick);
 
@@ -381,6 +477,7 @@ export default function IntroGate({ onDone }) {
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', onMove);
       overlay.removeEventListener('click', onClick);
+      document.body.classList.remove('ds-gate-morphing', 'ds-gate-logo-landed');
       document.body.style.overflow = '';
       pmrem.dispose();
       composer.dispose();
@@ -393,6 +490,9 @@ export default function IntroGate({ onDone }) {
     <div className="ds-gate" ref={overlayRef} role="button" aria-label="Enter Atelier">
       <style>{GATE_CSS}</style>
       <canvas ref={canvasRef} className="ds-gate-canvas" />
+      <div ref={flatLogoRef} className="ds-gate-flat" aria-hidden>
+        <NeedleA size={100} color="#F4F2EC" />
+      </div>
       <div className={`ds-gate-hint${ready ? ' on' : ''}`}>
         {ready ? 'click to enter' : 'pouring the letterform…'}
       </div>
@@ -401,11 +501,55 @@ export default function IntroGate({ onDone }) {
 }
 
 const GATE_CSS = `
-.ds-gate { position: fixed; inset: 0; z-index: 100; background: #0A0C11; cursor: pointer; }
+.ds-gate { position: fixed; inset: 0; z-index: 100; background: #0A0C11; cursor: pointer;
+  transition: background-color 0.58s ease 0.62s; }
+.ds-gate.ds-gate-leave { background: transparent; }
 .ds-gate.ds-gate-leave { pointer-events: none; }
 .ds-gate-canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important;
-  transition: opacity 0.5s ease 0.5s; }
+  transition: opacity 0.58s ease 0.68s; }
 .ds-gate-leave .ds-gate-canvas { opacity: 0; }
+
+body.ds-gate-morphing:not(.ds-gate-logo-landed) .ds-brand-a { opacity: 0; }
+body.ds-gate-logo-landed .ds-brand-a { opacity: 1; transition: opacity 0.18s ease; }
+
+.ds-gate-flat {
+  --gate-logo-size: 62vmin;
+  --gate-logo-left: calc(50vw - var(--gate-logo-size) / 2);
+  --gate-logo-top: calc(50vh - var(--gate-logo-size) / 2);
+  --gate-logo-x: 0px;
+  --gate-logo-y: 0px;
+  --gate-logo-scale: 0.08;
+  position: fixed;
+  left: var(--gate-logo-left);
+  top: var(--gate-logo-top);
+  width: var(--gate-logo-size);
+  height: var(--gate-logo-size);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+  transform: translate3d(0, 0, 0) scale(0.985);
+  transform-origin: center center;
+  filter:
+    drop-shadow(0 0 16px rgba(107,168,222,0.5))
+    drop-shadow(0 0 34px rgba(169,140,245,0.32));
+  transition:
+    opacity 0.58s ease,
+    filter 0.58s ease,
+    transform 1.22s cubic-bezier(.17,.89,.18,1);
+}
+.ds-gate-flat svg { width: 100%; height: 100%; }
+.ds-gate-flat-ready .ds-gate-flat {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter:
+    drop-shadow(0 0 10px rgba(107,168,222,0.34))
+    drop-shadow(0 0 22px rgba(169,140,245,0.22));
+}
+.ds-gate-flat-fly .ds-gate-flat {
+  opacity: 1;
+  transform: translate3d(var(--gate-logo-x), var(--gate-logo-y), 0) scale(var(--gate-logo-scale));
+}
+.ds-gate-flat-landed .ds-gate-flat { opacity: 0; transition: opacity 0.18s ease, transform 1.22s cubic-bezier(.17,.89,.18,1); }
 
 .ds-gate-hint { position: absolute; bottom: 7vh; left: 50%; transform: translateX(-50%);
   font-family: ${MONO}; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase;
