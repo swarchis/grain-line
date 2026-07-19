@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useMotionValue, useSpring, useTransform, useScroll, useReducedMotion } from 'framer-motion';
 import { STAGES } from '../../data/mockData.js';
 import { PLANS } from '../../data/plans.js';
+import IntroGate, { NeedleA } from './IntroGate.jsx';
 
 /* ───────────────────────────────────────────────────────────────────────────
    "The Cutting Table" — Rev 3.
@@ -75,11 +76,13 @@ function Grainline({ h = 34, color = C.blue, stroke = 2 }) {
   );
 }
 
-/* The new lockup: Atelier over a tiny "labs". */
+/* The lockup: the needle-A mark, then Atelier over a tiny "labs". The mark
+   carries .ds-brand-a — the intro gate's liquid logo flies to and lands on
+   the first instance of it (the header's). */
 function BrandMark({ size = 18 }) {
   return (
     <span className="ds-brand">
-      <Grainline h={size + 4} color={C.blue} stroke={2.6} />
+      <NeedleA size={size + 10} color={C.paper} className="ds-brand-a" />
       <span className="ds-brand-stack">
         <span className="ds-brand-name" style={{ fontSize: size }}>Atelier</span>
         <span className="ds-brand-labs">labs</span>
@@ -268,7 +271,9 @@ function Hero3D({ navigate }) {
       const cy = rect.top + rect.height / 2;
       let deg = (Math.atan2(e.clientX - cx, -(e.clientY - cy)) * 180) / Math.PI;
       if (deg < 0) deg += 360;
-      setAngle(deg);
+      // Skip sub-half-degree updates — re-rendering the compass on every
+      // pointer event competes with scrolling for main-thread time.
+      setAngle(a => (Math.abs(deg - a) > 0.4 ? deg : a));
       setActive(true);
     });
   };
@@ -402,14 +407,16 @@ function CursorLight() {
     const move = (e) => {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        el.style.setProperty('--mx', `${e.clientX}px`);
-        el.style.setProperty('--my', `${e.clientY}px`);
+        // Transform, not background-position: moving a pre-painted orb is
+        // compositor-only, while repositioning a viewport-sized gradient
+        // repaints the whole screen every frame.
+        el.style.transform = `translate3d(${e.clientX - 700}px, ${e.clientY - 700}px, 0)`;
       });
     };
     window.addEventListener('mousemove', move, { passive: true });
     return () => { window.removeEventListener('mousemove', move); if (raf) cancelAnimationFrame(raf); };
   }, []);
-  return <div ref={ref} className="ds-cursorlight" aria-hidden />;
+  return <div className="ds-cursorlight" aria-hidden><div ref={ref} className="ds-cursorlight-orb" /></div>;
 }
 
 /* ── The persistent grainline thread — draws itself in as you scroll, and
@@ -442,6 +449,16 @@ function GrainlineThread() {
         />
       </svg>
       <svg className="ds-thread ds-thread-front" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        {/* Glow lives in the SVG as a wide soft stroke under the core line —
+           a CSS drop-shadow filter here would force Chrome to rasterize a
+           full-page-height filtered layer, which stalls the first scroll
+           gesture. */}
+        <motion.path
+          d={THREAD_FRONT_PATH} vectorEffect="non-scaling-stroke"
+          fill="none" stroke={C.blue} strokeWidth="7" strokeLinecap="round" opacity="0.22"
+          pathLength="1" strokeDasharray="1"
+          style={reduce ? {} : { strokeDashoffset: dashoffset, x: frontX }}
+        />
         <motion.path
           d={THREAD_FRONT_PATH} vectorEffect="non-scaling-stroke"
           fill="none" stroke={C.blue} strokeWidth="2.2" strokeLinecap="round"
@@ -607,10 +624,16 @@ function FlowRule() {
 
 export default function Welcome() {
   const navigate = useNavigate();
+  // The liquid-logo gate plays on every fresh open; reduced-motion users go
+  // straight to the page.
+  const [introDone, setIntroDone] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  );
 
   return (
     <div className="ds-root">
       <style>{CSS}</style>
+      {!introDone && <IntroGate onDone={() => setIntroDone(true)} />}
       <Atmosphere />
       <GrainlineThread />
       <CursorLight />
@@ -752,7 +775,7 @@ const CSS = `
 
 /* atmosphere — fixed, full-bleed, behind every section */
 .ds-atmosphere { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.ds-aurora { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.42; mix-blend-mode: screen; }
+.ds-aurora { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.42; mix-blend-mode: screen; will-change: transform; }
 .ds-aurora-1 { width: 58vw; height: 58vw; top: -22%; left: -12%; background: radial-gradient(circle, ${C.blue}, transparent 70%); animation: ds-drift1 28s ease-in-out infinite; }
 .ds-aurora-2 { width: 48vw; height: 48vw; top: 28%; right: -16%; background: radial-gradient(circle, ${C.violet}, transparent 70%); animation: ds-drift2 34s ease-in-out infinite; }
 .ds-aurora-3 { width: 44vw; height: 44vw; bottom: -14%; left: 22%; background: radial-gradient(circle, ${C.coral}, transparent 70%); animation: ds-drift3 24s ease-in-out infinite; }
@@ -765,17 +788,17 @@ const CSS = `
 .ds-thread { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; opacity: 0.55; }
 /* the near pass of the thread: brighter, thicker, glowing, drawn ABOVE the
    sections, breathing slowly in scale — in front of the page, not behind it */
-.ds-thread-front { z-index: 25; opacity: 0.8; transform-origin: 50% 50%;
-  filter: drop-shadow(0 0 6px rgba(107,168,222,0.75));
+.ds-thread-front { z-index: 25; opacity: 0.8; will-change: opacity;
   animation: ds-thread-breathe 9s ease-in-out infinite; }
-@keyframes ds-thread-breathe { 0%, 100% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(1.012); opacity: 1; } }
+@keyframes ds-thread-breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 
 /* the cursor key light — a colored key with a small white-hot core */
-.ds-cursorlight { position: fixed; inset: 0; z-index: 30; pointer-events: none; mix-blend-mode: screen;
+.ds-cursorlight { position: fixed; inset: 0; z-index: 30; pointer-events: none; mix-blend-mode: screen; overflow: hidden; }
+.ds-cursorlight-orb { position: absolute; width: 1400px; height: 1400px; will-change: transform;
+  transform: translate3d(-2000px, -2000px, 0);
   background:
-    radial-gradient(150px circle at var(--mx, -600px) var(--my, -600px), rgba(255,255,255,0.05), transparent 70%),
-    radial-gradient(560px circle at var(--mx, -600px) var(--my, -600px),
-      rgba(107,168,222,0.13), rgba(169,140,245,0.06) 42%, transparent 68%); }
+    radial-gradient(150px circle at center, rgba(255,255,255,0.05), transparent 70%),
+    radial-gradient(560px circle at center, rgba(107,168,222,0.13), rgba(169,140,245,0.06) 42%, transparent 68%); }
 @media (hover: none) { .ds-cursorlight { display: none; } }
 
 /* everything else paints above the atmosphere + thread */
@@ -841,7 +864,7 @@ const CSS = `
     conic-gradient(from 196deg at 72% -8%, transparent 42%, rgba(107,168,222,0.12) 47%, transparent 53%),
     conic-gradient(from 168deg at 26% -8%, transparent 41%, rgba(169,140,245,0.10) 47%, transparent 54%),
     conic-gradient(from 182deg at 50% -12%, transparent 44%, rgba(240,197,106,0.06) 48%, transparent 52%);
-  transform-origin: 50% 0; animation: ds-beam-sway 16s ease-in-out infinite alternate; }
+  transform-origin: 50% 0; will-change: transform; animation: ds-beam-sway 16s ease-in-out infinite alternate; }
 @keyframes ds-beam-sway { from { transform: rotate(-1.6deg); } to { transform: rotate(1.6deg); } }
 
 /* liquid light fields (see LiquidField) */
