@@ -36,10 +36,11 @@ const FACE_ROT = -Math.PI / 2;
 /* The flat brand mark: a serif A whose crossbar is a needle, its eye
    punched through the right end. (Swap here if a bitmap master lands in
    public/brand/.) */
-export function NeedleA({ size = 26, color = '#F4F2EC', className, style }) {
+export function NeedleA({ size = 26, color = '#F4F2EC', className, style, preserveAspectRatio = 'xMidYMid meet' }) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 100 100" aria-hidden
+      preserveAspectRatio={preserveAspectRatio}
       className={className} style={{ display: 'block', overflow: 'visible', ...style }}
     >
       <text x="44" y="78" textAnchor="middle" fontFamily={SERIF} fontSize="88" fontWeight="500" fill={color}>A</text>
@@ -335,6 +336,46 @@ export default function IntroGate({ onDone }) {
       return { left, top, width: right - left, height: bottom - top };
     };
 
+    const visibleSvgRect = (svg) => {
+      if (!svg) return null;
+      try {
+        const box = svg.getBBox();
+        const rect = svg.getBoundingClientRect();
+        const viewBox = svg.viewBox?.baseVal;
+        if (!box.width || !box.height || !rect.width || !rect.height || !viewBox?.width || !viewBox?.height) return null;
+        const scaleX = rect.width / viewBox.width;
+        const scaleY = rect.height / viewBox.height;
+        return {
+          left: rect.left + (box.x - viewBox.x) * scaleX,
+          top: rect.top + (box.y - viewBox.y) * scaleY,
+          width: box.width * scaleX,
+          height: box.height * scaleY,
+          box,
+          viewBox,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const svgFit = (svg, targetRect) => {
+      try {
+        const box = svg?.getBBox();
+        const viewBox = svg?.viewBox?.baseVal;
+        if (!box?.width || !box?.height || !viewBox?.width || !viewBox?.height || !targetRect?.width || !targetRect?.height) return null;
+        const width = targetRect.width * (viewBox.width / box.width);
+        const height = targetRect.height * (viewBox.height / box.height);
+        return {
+          left: targetRect.left - (box.x - viewBox.x) * (width / viewBox.width),
+          top: targetRect.top - (box.y - viewBox.y) * (height / viewBox.height),
+          width,
+          height,
+        };
+      } catch {
+        return null;
+      }
+    };
+
     const animate = () => {
       raf = requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
@@ -439,26 +480,41 @@ export default function IntroGate({ onDone }) {
         if (!flatLogo) return;
         const mark = document.querySelector('.ds-brand-a');
         const m = mark ? mark.getBoundingClientRect() : { left: 40, top: 20, width: 30, height: 30 };
+        const flatSvg = flatLogo.querySelector('svg');
         const letterRect = screenRectForObject(logoModel || holder);
-        const startSize = letterRect
-          ? Math.max(letterRect.width, letterRect.height)
-          : Math.min(window.innerWidth, window.innerHeight) * 0.62;
-        const startLeft = letterRect
-          ? letterRect.left + (letterRect.width - startSize) / 2
-          : (window.innerWidth - startSize) / 2;
-        const startTop = letterRect
-          ? letterRect.top + (letterRect.height - startSize) / 2
-          : (window.innerHeight - startSize) / 2;
-        const dx = m.left + m.width / 2 - (startLeft + startSize / 2);
-        const dy = m.top + m.height / 2 - (startTop + startSize / 2);
-        const scale = Math.max(0.04, m.height / startSize);
-        flatLogo.style.setProperty('--gate-logo-size', `${startSize}px`);
-        flatLogo.style.setProperty('--gate-logo-left', `${startLeft}px`);
-        flatLogo.style.setProperty('--gate-logo-top', `${startTop}px`);
-        flatLogo.style.setProperty('--gate-logo-x', `${dx}px`);
-        flatLogo.style.setProperty('--gate-logo-y', `${dy}px`);
-        flatLogo.style.setProperty('--gate-logo-scale', String(scale));
+        const startRect = letterRect || {
+          left: window.innerWidth * 0.19,
+          top: window.innerHeight * 0.19,
+          width: Math.min(window.innerWidth, window.innerHeight) * 0.62,
+          height: Math.min(window.innerWidth, window.innerHeight) * 0.62,
+        };
+        const startFit = svgFit(flatSvg, startRect) || {
+          left: startRect.left,
+          top: startRect.top,
+          width: startRect.width,
+          height: startRect.height,
+        };
+        flatLogo.style.setProperty('--gate-logo-width', `${startFit.width}px`);
+        flatLogo.style.setProperty('--gate-logo-height', `${startFit.height}px`);
+        flatLogo.style.setProperty('--gate-logo-left', `${startFit.left}px`);
+        flatLogo.style.setProperty('--gate-logo-top', `${startFit.top}px`);
+        flatLogo.style.setProperty('--gate-logo-x', '0px');
+        flatLogo.style.setProperty('--gate-logo-y', '0px');
+        flatLogo.style.setProperty('--gate-logo-scale-x', '1');
+        flatLogo.style.setProperty('--gate-logo-scale-y', '1');
         overlay.classList.add('ds-gate-flat-ready');
+        window.requestAnimationFrame(() => {
+          const startVisible = visibleSvgRect(flatSvg) || startRect;
+          const targetVisible = visibleSvgRect(mark) || m;
+          const scaleX = Math.max(0.02, targetVisible.width / startVisible.width);
+          const scaleY = Math.max(0.02, targetVisible.height / startVisible.height);
+          const finalContainerLeft = targetVisible.left - (startVisible.left - startFit.left) * scaleX;
+          const finalContainerTop = targetVisible.top - (startVisible.top - startFit.top) * scaleY;
+          flatLogo.style.setProperty('--gate-logo-x', `${finalContainerLeft - startFit.left}px`);
+          flatLogo.style.setProperty('--gate-logo-y', `${finalContainerTop - startFit.top}px`);
+          flatLogo.style.setProperty('--gate-logo-scale-x', String(scaleX));
+          flatLogo.style.setProperty('--gate-logo-scale-y', String(scaleY));
+        });
       }, 620);
       window.setTimeout(() => {
         overlay.classList.add('ds-gate-flat-fly');
@@ -491,7 +547,7 @@ export default function IntroGate({ onDone }) {
       <style>{GATE_CSS}</style>
       <canvas ref={canvasRef} className="ds-gate-canvas" />
       <div ref={flatLogoRef} className="ds-gate-flat" aria-hidden>
-        <NeedleA size={100} color="#F4F2EC" />
+        <NeedleA size={100} color="#F4F2EC" preserveAspectRatio="none" />
       </div>
       <div className={`ds-gate-hint${ready ? ' on' : ''}`}>
         {ready ? 'click to enter' : 'pouring the letterform…'}
@@ -513,22 +569,24 @@ body.ds-gate-morphing:not(.ds-gate-logo-landed) .ds-brand-a { opacity: 0; }
 body.ds-gate-logo-landed .ds-brand-a { opacity: 1; transition: opacity 0.18s ease; }
 
 .ds-gate-flat {
-  --gate-logo-size: 62vmin;
-  --gate-logo-left: calc(50vw - var(--gate-logo-size) / 2);
-  --gate-logo-top: calc(50vh - var(--gate-logo-size) / 2);
+  --gate-logo-width: 62vmin;
+  --gate-logo-height: 62vmin;
+  --gate-logo-left: calc(50vw - var(--gate-logo-width) / 2);
+  --gate-logo-top: calc(50vh - var(--gate-logo-height) / 2);
   --gate-logo-x: 0px;
   --gate-logo-y: 0px;
-  --gate-logo-scale: 0.08;
+  --gate-logo-scale-x: 0.08;
+  --gate-logo-scale-y: 0.08;
   position: fixed;
   left: var(--gate-logo-left);
   top: var(--gate-logo-top);
-  width: var(--gate-logo-size);
-  height: var(--gate-logo-size);
+  width: var(--gate-logo-width);
+  height: var(--gate-logo-height);
   opacity: 0;
   pointer-events: none;
   z-index: 3;
-  transform: translate3d(0, 0, 0) scale(0.985);
-  transform-origin: center center;
+  transform: translate3d(0, 0, 0) scale(0.985, 0.985);
+  transform-origin: top left;
   filter:
     drop-shadow(0 0 16px rgba(107,168,222,0.5))
     drop-shadow(0 0 34px rgba(169,140,245,0.32));
@@ -540,14 +598,14 @@ body.ds-gate-logo-landed .ds-brand-a { opacity: 1; transition: opacity 0.18s eas
 .ds-gate-flat svg { width: 100%; height: 100%; }
 .ds-gate-flat-ready .ds-gate-flat {
   opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
+  transform: translate3d(0, 0, 0) scale(1, 1);
   filter:
     drop-shadow(0 0 10px rgba(107,168,222,0.34))
     drop-shadow(0 0 22px rgba(169,140,245,0.22));
 }
 .ds-gate-flat-fly .ds-gate-flat {
   opacity: 1;
-  transform: translate3d(var(--gate-logo-x), var(--gate-logo-y), 0) scale(var(--gate-logo-scale));
+  transform: translate3d(var(--gate-logo-x), var(--gate-logo-y), 0) scale(var(--gate-logo-scale-x), var(--gate-logo-scale-y));
 }
 .ds-gate-flat-landed .ds-gate-flat { opacity: 0; transition: opacity 0.18s ease, transform 1.22s cubic-bezier(.17,.89,.18,1); }
 
