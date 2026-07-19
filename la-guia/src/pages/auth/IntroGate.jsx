@@ -73,7 +73,7 @@ export default function IntroGate({ onDone }) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 0.92;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
@@ -82,10 +82,10 @@ export default function IntroGate({ onDone }) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment()).texture;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-    const l1 = new THREE.PointLight(0x6ba8de, 55, 40); l1.position.set(-3.4, 1.6, 3.0); scene.add(l1);
-    const l2 = new THREE.PointLight(0xa98cf5, 55, 40); l2.position.set(3.2, 2.2, 2.6); scene.add(l2);
-    const l3 = new THREE.PointLight(0xff8a6b, 40, 40); l3.position.set(0.4, -3.0, 3.0); scene.add(l3);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.258));
+    const l1 = new THREE.PointLight(0x6ba8de, 36.8, 40); l1.position.set(-3.4, 1.6, 3.0); scene.add(l1);
+    const l2 = new THREE.PointLight(0xa98cf5, 35, 40); l2.position.set(3.2, 2.2, 2.6); scene.add(l2);
+    const l3 = new THREE.PointLight(0xff8a6b, 25.8, 40); l3.position.set(0.4, -3.0, 3.0); scene.add(l3);
 
     // ── Reactive color-splash background ──────────────────────────────────
     // A big plane far behind the letter, painted by a shader whose blobs
@@ -113,22 +113,26 @@ export default function IntroGate({ onDone }) {
           uniform float uTime, uEnergy, uSpin, uAspect, uFade;
           uniform vec2 uMove;
           vec3 blob(vec2 p, vec2 c, vec3 col, float rad, float sp, float ph) {
-            vec2 o = c + vec2(cos(uTime*sp+ph), sin(uTime*sp*0.9+ph)) * 0.2 + uMove * 0.55;
+            vec2 o = c + vec2(cos(uTime*sp+ph), sin(uTime*sp*0.9+ph)) * 0.2 + uMove * 0.5;
             float d = length(p - o);
             float i = smoothstep(rad, 0.0, d);
-            i = pow(i, 1.6) * (0.42 + uEnergy * 1.05);
+            i = pow(i, 2.0) * (0.20 + uEnergy * 0.6);
             return col * i;
           }
           void main() {
             vec2 p = (vUv - 0.5); p.x *= uAspect;
             float s = uSpin * 0.35;
             p = mat2(cos(s), -sin(s), sin(s), cos(s)) * p;
-            vec3 c = vec3(0.039, 0.047, 0.067);
-            c += blob(p, vec2(-0.5, 0.30), vec3(0.42, 0.66, 0.87), 0.55, 0.31, 0.0);
-            c += blob(p, vec2( 0.52, 0.34), vec3(0.66, 0.55, 0.96), 0.52, 0.24, 1.7);
-            c += blob(p, vec2( 0.30,-0.42), vec3(1.00, 0.54, 0.42), 0.50, 0.35, 3.1);
-            c += blob(p, vec2(-0.42,-0.30), vec3(0.94, 0.77, 0.42), 0.46, 0.28, 4.6);
-            c += blob(p, vec2( 0.02, 0.56), vec3(0.40, 0.90, 0.95), 0.44, 0.4,  2.2);
+            vec3 c = vec3(0.022, 0.028, 0.042);
+            c += blob(p, vec2(-0.5, 0.30), vec3(0.42, 0.66, 0.87), 0.46, 0.31, 0.0);
+            c += blob(p, vec2( 0.52, 0.34), vec3(0.66, 0.55, 0.96), 0.44, 0.24, 1.7);
+            c += blob(p, vec2( 0.30,-0.42), vec3(1.00, 0.54, 0.42), 0.42, 0.35, 3.1);
+            c += blob(p, vec2(-0.42,-0.30), vec3(0.94, 0.77, 0.42), 0.42, 0.28, 4.6);
+            c += blob(p, vec2( 0.02, 0.56), vec3(0.40, 0.90, 0.95), 0.40, 0.4,  2.2);
+            // darken the center so the letter reads as a distinct object in
+            // front of the field rather than dissolving into it
+            float vig = smoothstep(0.15, 0.95, length(p));
+            c *= mix(0.55, 1.0, vig);
             gl_FragColor = vec4(c * uFade, 1.0);
           }`,
       }),
@@ -143,35 +147,74 @@ export default function IntroGate({ onDone }) {
     group.add(holder);
     scene.add(group);
 
+    const cursorRipple = {
+      uCursorWorld: { value: new THREE.Vector3(999, 999, 0) },
+      uCursorStrength: { value: 0 },
+      uRippleTime: { value: 0 },
+    };
+
     // Color-cycling additive rim shell — the bright glow ON the letter.
     const fresnelMat = new THREE.ShaderMaterial({
-      uniforms: { cA: { value: new THREE.Color(0x6ba8de) }, cB: { value: new THREE.Color(0xff8a6b) }, uGlow: { value: 1.25 } },
+      uniforms: { cA: { value: new THREE.Color(0x6ba8de) }, cB: { value: new THREE.Color(0xff8a6b) }, uGlow: { value: 1.25 }, ...cursorRipple },
       vertexShader: `
+        uniform vec3 uCursorWorld;
+        uniform float uCursorStrength;
+        uniform float uRippleTime;
         varying float vI;
         void main() {
+          vec3 warped = position;
+          vec4 wPos = modelMatrix * vec4(warped, 1.0);
+          float d = distance(wPos.xy, uCursorWorld.xy);
+          float mask = smoothstep(0.62, 0.0, d) * uCursorStrength;
+          float wave = sin(d * 25.0 - uRippleTime * 8.0);
+          warped += normal * mask * (0.14 + wave * 0.045);
           vec3 n = normalize(normalMatrix * normal);
-          vec3 vPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
-          vI = pow(1.0 - abs(dot(n, normalize(-vPos))), 2.1);
+          vec3 vPos = (modelViewMatrix * vec4(warped, 1.0)).xyz;
+          vI = pow(1.0 - abs(dot(n, normalize(-vPos))), 2.15);
           gl_Position = projectionMatrix * vec4(vPos, 1.0);
         }`,
       fragmentShader: `
         uniform vec3 cA; uniform vec3 cB; uniform float uGlow;
         varying float vI;
-        void main() { gl_FragColor = vec4(mix(cA, cB, vI) * uGlow, vI); }`,
+        void main() { gl_FragColor = vec4(mix(cA, cB, vI) * uGlow, min(1.0, vI * 1.35)); }`,
       transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false,
     });
 
-    // See-through iridescent liquid glass, glowing faintly from within.
+    // See-through iridescent glass. Tinted, attenuating glass (deep teal,
+    // short attenuation distance) gives the body real colored depth so the
+    // letter reads as a solid object in front of the field instead of a
+    // transparent white blank the bright background shows straight through.
     const liquidMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      metalness: 0.2, roughness: 0.05,
-      transmission: 0.92, thickness: 0.9, ior: 1.35,
-      clearcoat: 1, clearcoatRoughness: 0.05,
+      color: 0xeaf7ff,
+      metalness: 0.2, roughness: 0.06,
+      transmission: 0.74, thickness: 1.25, ior: 1.38,
+      attenuationColor: new THREE.Color(0x39789a), attenuationDistance: 1.15,
+      clearcoat: 1, clearcoatRoughness: 0.04,
       iridescence: 1, iridescenceIOR: 1.4, iridescenceThicknessRange: [100, 560],
-      envMapIntensity: 2.1,
-      emissive: new THREE.Color(0x6ba8de), emissiveIntensity: 0.4,
+      envMapIntensity: 1.7,
+      emissive: new THREE.Color(0x6ba8de), emissiveIntensity: 0.276,
       transparent: true, opacity: 1,
     });
+    liquidMat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, cursorRipple);
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform vec3 uCursorWorld;
+          uniform float uCursorStrength;
+          uniform float uRippleTime;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vec4 rippleWorld = modelMatrix * vec4(transformed, 1.0);
+          float rippleDist = distance(rippleWorld.xy, uCursorWorld.xy);
+          float rippleMask = smoothstep(0.58, 0.0, rippleDist) * uCursorStrength;
+          float rippleWave = sin(rippleDist * 28.0 - uRippleTime * 9.0);
+          transformed += normal * rippleMask * (0.11 + rippleWave * 0.04);`,
+        );
+    };
 
     let disposed = false;
     new GLTFLoader().load(
@@ -192,7 +235,7 @@ export default function IntroGate({ onDone }) {
         meshes.forEach((child) => {
           child.material = liquidMat;
           const shell = new THREE.Mesh(child.geometry, fresnelMat);
-          shell.scale.setScalar(1.04);
+          shell.scale.setScalar(1.075);
           child.add(shell);
         });
         holder.add(model);
@@ -209,7 +252,7 @@ export default function IntroGate({ onDone }) {
     // ── Post-processing: bloom for the bright colorful glow ───────────────
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.75, 0.18);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.736, 0.7, 0.3);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -241,6 +284,16 @@ export default function IntroGate({ onDone }) {
 
     // fly-to-corner state (filled on click)
     const fly = { active: false, prog: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), scaleFrom: 1, scaleTo: 0.12 };
+
+    const worldAtScreen = (sx, sy) => {
+      const halfH = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
+      const halfW = halfH * camera.aspect;
+      return new THREE.Vector3(
+        ((sx / window.innerWidth) * 2 - 1) * halfW,
+        -((sy / window.innerHeight) * 2 - 1) * halfH,
+        0,
+      );
+    };
 
     const animate = () => {
       raf = requestAnimationFrame(animate);
@@ -278,14 +331,21 @@ export default function IntroGate({ onDone }) {
       bgUniforms.uEnergy.value = energy;
       bgUniforms.uSpin.value = holder.rotation.y - FACE_ROT;
       bgUniforms.uMove.value.set(ptr.x, ptr.y);
+      cursorRipple.uRippleTime.value = t;
+      cursorRipple.uCursorWorld.value.copy(worldAtScreen(
+        ((ptr.x + 1) / 2) * window.innerWidth,
+        ((1 - ptr.y) / 2) * window.innerHeight,
+      ));
+      cursorRipple.uCursorStrength.value = fly.active ? 0 : Math.min(1, 0.42 + energy * 0.45);
 
-      // cycle the rim + inner glow through the palette
+      // cycle the rim + inner glow through the palette, keeping most of the
+      // bloom on the letter's glass edge instead of the dimmer splash field
       const hue = (t * 0.06) % 1;
-      fresnelMat.uniforms.cA.value.setHSL(hue, 0.7, 0.62);
-      fresnelMat.uniforms.cB.value.setHSL((hue + 0.4) % 1, 0.75, 0.6);
-      fresnelMat.uniforms.uGlow.value = 1.1 + energy * 0.9;
-      liquidMat.emissive.setHSL((hue + 0.15) % 1, 0.6, 0.5);
-      liquidMat.emissiveIntensity = 0.35 + energy * 0.4;
+      fresnelMat.uniforms.cA.value.setHSL(hue, 0.78, 0.66);
+      fresnelMat.uniforms.cB.value.setHSL((hue + 0.4) % 1, 0.8, 0.63);
+      fresnelMat.uniforms.uGlow.value = 1.16 + energy * 0.966;
+      liquidMat.emissive.setHSL((hue + 0.15) % 1, 0.68, 0.58);
+      liquidMat.emissiveIntensity = 0.267 + energy * 0.46;
 
       composer.render();
     };
@@ -294,16 +354,6 @@ export default function IntroGate({ onDone }) {
     const finish = () => {
       document.body.style.overflow = '';
       onDone();
-    };
-
-    const worldAtScreen = (sx, sy) => {
-      const halfH = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
-      const halfW = halfH * camera.aspect;
-      return new THREE.Vector3(
-        ((sx / window.innerWidth) * 2 - 1) * halfW,
-        -((sy / window.innerHeight) * 2 - 1) * halfH,
-        0,
-      );
     };
 
     const onClick = () => {
