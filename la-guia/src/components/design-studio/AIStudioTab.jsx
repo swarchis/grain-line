@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { base64ToDataUrl, base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
+import { aiPost } from '../../lib/aiApi.js';
 
 // "Transform" tools edit the founder's actual existing design (Gemini's
 // image model, which can take a reference image) — the result replaces the
@@ -56,11 +57,7 @@ function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLaye
       const body = kind === 'addition'
         ? { mode: tool.mode, prompt: prompt.trim() || null }
         : { mode: tool.mode, prompt: prompt.trim() || null, images: [await onCapture()] };
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await aiPost(endpoint, body);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage(`design-studio-${tool.mode}`);

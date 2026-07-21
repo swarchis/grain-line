@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { aiPost } from '../lib/aiApi.js';
 
 const FIELDS = [
   { key: 'bom', label: 'Materials (BOM)', placeholder: 'e.g. "14oz cotton twill body, poly-cotton lining, matte YKK zipper"' },
@@ -30,11 +31,7 @@ export default function TechPackQuestionnaire({ open, onClose, category, onCompl
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-tech-pack-full`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, answers }),
-      });
+      const res = await aiPost('/api/generate-tech-pack-full', { category, answers });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage?.('generate-tech-pack-full');

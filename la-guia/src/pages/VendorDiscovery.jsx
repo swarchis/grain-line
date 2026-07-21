@@ -8,6 +8,7 @@ import TabBar from '../components/TabBar.jsx';
 import { getPlan } from '../data/plans.js';
 import HoverPreview from '../components/HoverPreview.jsx';
 import { SkeletonRow } from '../components/Skeleton.jsx';
+import { aiPost } from '../lib/aiApi.js';
 
 const SORTS = {
   Name: (a, b) => a.name.localeCompare(b.name),
@@ -269,11 +270,7 @@ export default function VendorDiscovery() {
     setParsing(true);
     setParseError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/parse-vendor`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: pasteText }),
-      });
+      const res = await aiPost('/api/parse-vendor', { text: pasteText });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setForm(f => ({
@@ -334,11 +331,7 @@ export default function VendorDiscovery() {
     setSearchError(null);
     setResults(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/search-vendors`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...filters, imageBase64: searchImage?.base64 || null }),
-      });
+      const res = await aiPost('/api/search-vendors', { ...filters, imageBase64: searchImage?.base64 || null });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('vendor-search');

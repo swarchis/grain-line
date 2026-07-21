@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { blobToBase64, uploadDesignImage } from '../../lib/designImages.js';
+import { aiPost } from '../../lib/aiApi.js';
 
 function Moodboard({ productId, moodboard, onChange }) {
   const [uploading, setUploading] = useState(false);
@@ -76,9 +77,7 @@ function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, log
     try {
       const body = fromCanvas ? { imageBase64: await onCapture() } : { brief: brief.trim() };
       if (!fromCanvas && !brief.trim()) throw new Error('Describe the product or collection first.');
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/color-palette`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
+      const res = await aiPost('/api/design/color-palette', body);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('color-palette');
@@ -137,9 +136,7 @@ function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/trend-inspiration`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category }),
-      });
+      const res = await aiPost('/api/design/trend-inspiration', { category });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('trend-inspiration');

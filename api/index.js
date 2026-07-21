@@ -9,6 +9,7 @@ const { Resend } = require('resend');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { creditCost, tierCredits } = require('./config/aiCredits');
 
 // Load the API env first, then tolerate keys placed in the Vite app env.
 // Existing process env values win, so deploy/runtime secrets are left alone.
@@ -92,8 +93,9 @@ const emailLimiter = rateLimit({
   message: { error: 'Too many email requests — please wait a few minutes.' },
 });
 
-app.use(apiLimiter);
-app.use([
+// The metered AI/generation endpoints — rate-limited, JWT-authenticated, and
+// credit-charged (see requireAuth registration + metered() below).
+const AI_PATHS = [
   '/api/analyze-design',
   '/api/generate-tech-pack',   // also covers /generate-tech-pack-full (prefix)
   '/api/parse-vendor',
@@ -108,7 +110,10 @@ app.use([
   '/api/chat-reply',
   '/api/quote-economics',
   '/api/cost-simulator',
-], aiLimiter);
+];
+
+app.use(apiLimiter);
+app.use(AI_PATHS, aiLimiter);
 app.use(['/api/send-invite', '/api/send-campaign'], emailLimiter);
 
 // Captures the raw buffer body. Required to verify Shopify's SHA-256 HMAC signatures
@@ -123,6 +128,87 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null;
+
+// ── Auth + AI credit metering ────────────────────────────────────────────────
+// requireAuth validates the caller's Supabase JWT (sent as `Authorization:
+// Bearer <token>` by the frontend) and attaches req.user. metered() then checks
+// the user actually belongs to the brand and atomically debits its credit
+// balance before the handler runs, auto-refunding if the handler errors out.
+
+async function requireAuth(req, res, next) {
+  if (!supabase) return res.status(500).json({ ok: false, error: 'Auth is not configured on the server.' });
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ ok: false, error: 'Sign in required.' });
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data || !data.user) return res.status(401).json({ ok: false, error: 'Your session has expired — please sign in again.' });
+    req.user = data.user;
+    return next();
+  } catch (err) {
+    console.error('Auth check failed:', err.message);
+    return res.status(401).json({ ok: false, error: 'Could not verify your session.' });
+  }
+}
+
+// Owner of, or active member of, the brand?
+async function verifyBrandAccess(userId, brandId) {
+  if (!supabase || !userId || !brandId) return false;
+  const { data: owned } = await supabase
+    .from('brands').select('id').eq('id', brandId).eq('user_id', userId).maybeSingle();
+  if (owned) return true;
+  const { data: member } = await supabase
+    .from('brand_members').select('brand_id')
+    .eq('brand_id', brandId).eq('user_id', userId).eq('status', 'active').maybeSingle();
+  return !!member;
+}
+
+async function debitCredits(brandId, cost, feature) {
+  const { data, error } = await supabase.rpc('debit_ai_credits', { p_brand_id: brandId, p_cost: cost, p_feature: feature });
+  if (error) throw error;
+  return typeof data === 'number' ? data : -1;
+}
+
+async function refundCredits(brandId, amount, feature) {
+  const { error } = await supabase.rpc('refund_ai_credits', { p_brand_id: brandId, p_amount: amount, p_feature: feature });
+  if (error) console.error('Credit refund failed:', error.message);
+}
+
+// Per-route middleware: verify brand access, atomically charge the feature's
+// credit cost, and schedule an auto-refund if the response ends in an error.
+function metered(feature) {
+  return async (req, res, next) => {
+    const brandId = (req.body && (req.body.brandId || req.body.brand_id)) || null;
+    if (!brandId) return res.status(400).json({ ok: false, error: 'brandId is required for AI features.' });
+    const access = await verifyBrandAccess(req.user && req.user.id, brandId);
+    if (!access) return res.status(403).json({ ok: false, error: 'You do not have access to this brand.' });
+
+    const cost = creditCost(feature);
+    let remaining;
+    try {
+      remaining = await debitCredits(brandId, cost, feature);
+    } catch (err) {
+      console.error('Credit debit error:', err.message);
+      return res.status(500).json({ ok: false, error: 'Credit system error — please try again.' });
+    }
+    if (remaining < 0) {
+      return res.status(402).json({ ok: false, error: 'Out of AI credits.', code: 'INSUFFICIENT_CREDITS' });
+    }
+    // If the handler ends up erroring (>=400), give the credits back.
+    res.on('finish', () => {
+      if (res.statusCode >= 400) {
+        refundCredits(brandId, cost, feature).catch((e) => console.error('Refund error:', e.message));
+      }
+    });
+    req.aiCredits = { brandId, cost, remaining };
+    return next();
+  };
+}
+
+// Every metered AI endpoint requires a valid signed-in user. Always registered
+// (fail closed): if auth isn't configured, requireAuth returns a clear 500
+// rather than letting requests through unauthenticated.
+app.use(AI_PATHS, requireAuth);
 
 const MODEL_NAME = "gemini-flash-lite-latest";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
@@ -340,7 +426,7 @@ function floodFillTransparentBackground(pixels, width, height, tolerance = 28) {
 // 1. DESIGN & TECH PACK ENDPOINTS
 // ---------------------------------------------------------
 
-app.post('/api/analyze-design', async (req, res) => {
+app.post('/api/analyze-design', metered('analyze-design'), async (req, res) => {
   console.log("📥 Received analysis request...");
   try {
     const { imageBase64 } = req.body;
@@ -367,7 +453,7 @@ Provide a JSON response with exactly this structure:
   }
 });
 
-app.post('/api/generate-tech-pack', async (req, res) => {
+app.post('/api/generate-tech-pack', metered('generate-tech-pack'), async (req, res) => {
   console.log("📥 Received tech pack request...");
   try {
     const { imageBase64 } = req.body;
@@ -403,7 +489,7 @@ Return a JSON object with this exact structure:
 // accuracy warning on AI-filled fields regardless of how confident this
 // prompt sounds — there's no way to verify factory-specific details (exact
 // supplier names, real cost data) without a human who actually knows them.
-app.post('/api/generate-tech-pack-full', async (req, res) => {
+app.post('/api/generate-tech-pack-full', metered('generate-tech-pack-full'), async (req, res) => {
   console.log("📥 Received full tech pack generation request...");
   try {
     const { imageBase64, category, answers } = req.body;
@@ -443,7 +529,7 @@ Return a JSON object with exactly this structure (every array can be empty if ge
 // 2. VENDOR SOURCING & OUTREACH ENDPOINTS
 // ---------------------------------------------------------
 
-app.post('/api/parse-vendor', async (req, res) => {
+app.post('/api/parse-vendor', metered('parse-vendor'), async (req, res) => {
   console.log("📥 Received vendor parse request...");
   try {
     const { text } = req.body;
@@ -477,7 +563,7 @@ Return a JSON object with exactly this structure:
   }
 });
 
-app.post('/api/draft-vendor-email', async (req, res) => {
+app.post('/api/draft-vendor-email', metered('draft-vendor-email'), async (req, res) => {
   console.log("📥 Received email draft request...");
   try {
     const { vendorName, productName, garmentType, preferences, ask } = req.body;
@@ -511,7 +597,7 @@ Write a concise, professional email (under 200 words), with a placeholder for th
   }
 });
 
-app.post('/api/search-vendors', async (req, res) => {
+app.post('/api/search-vendors', metered('search-vendors'), async (req, res) => {
   console.log("📥 Received vendor search request...");
   try {
     const { keywords, category, location, quantity, moq, targetPrice, certifications, imageBase64 } = req.body;
@@ -656,7 +742,7 @@ Do not invent details not supported by the text. Return a JSON object with exact
   }
 });
 
-app.post('/api/analyze-vendor-fit', async (req, res) => {
+app.post('/api/analyze-vendor-fit', metered('analyze-vendor-fit'), async (req, res) => {
   console.log("📥 Received vendor fit request...");
   try {
     const { vendor, product, brand, quoteHistory, bom } = req.body;
@@ -907,10 +993,44 @@ app.post('/api/stripe/webhook', async (req, res) => {
           .eq('stripe_customer_id', customerId);
           
         if (error) throw error;
+        // Zero the AI credit grant for the brand(s) on this customer.
+        const { data: brands } = await supabase.from('brands').select('id').eq('stripe_customer_id', customerId);
+        for (const b of brands || []) {
+          await supabase.rpc('grant_subscription_credits', { p_brand_id: b.id, p_amount: 0, p_reset_at: null });
+        }
         console.log(`✅ Automatically downgraded canceled Stripe customer ${customerId} to Free plan.`);
       } catch (err) {
         console.error("❌ Failed to downgrade brand in Supabase:", err.message);
         return res.status(500).send('Database error');
+      }
+    }
+  }
+
+  // Subscription paid (initial + every renewal) → grant that cycle's AI credits.
+  // Uses SET semantics (grant_subscription_credits), so Stripe retries are
+  // idempotent — the balance is set to the tier allowance, never stacked.
+  if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
+    const invoice = event.data.object;
+    const customerId = invoice.customer;
+    const line = (invoice.lines && invoice.lines.data && invoice.lines.data[0]) || null;
+    const priceId = line && line.price ? line.price.id : null;
+    const tier = priceId ? (Object.entries(PRICE_IDS).find(([, id]) => id === priceId) || [])[0] : null;
+
+    if (supabase && customerId && tier) {
+      try {
+        const amount = tierCredits(tier);
+        // Period end from the invoice line (unix seconds) → the next reset.
+        const periodEnd = line && line.period && line.period.end
+          ? new Date(line.period.end * 1000).toISOString()
+          : null;
+        const { data: brands } = await supabase.from('brands').select('id').eq('stripe_customer_id', customerId);
+        for (const b of brands || []) {
+          await supabase.rpc('grant_subscription_credits', { p_brand_id: b.id, p_amount: amount, p_reset_at: periodEnd });
+        }
+        console.log(`✅ Granted ${amount} AI credits (${tier}) to Stripe customer ${customerId}.`);
+      } catch (err) {
+        console.error('❌ Failed to grant AI credits:', err.message);
+        return res.status(500).send('Credit grant error');
       }
     }
   }
@@ -1415,7 +1535,7 @@ app.post('/api/send-campaign', async (req, res) => {
 // ---------------------------------------------------------
 const SUGGESTION_CATEGORIES = ['readiness', 'deadline', 'vendor', 'budget', 'team', 'billing', 'design', 'general'];
 
-app.post('/api/dashboard-suggestions', async (req, res) => {
+app.post('/api/dashboard-suggestions', metered('dashboard-suggestions'), async (req, res) => {
   console.log("📥 Received dashboard suggestions request...");
   try {
     const { brand, products, upcomingDeadlines, gateFlags, aiUsage, seats } = req.body;
@@ -1474,7 +1594,7 @@ const IMAGE_MODE_PROMPTS = {
   'variant': (p) => `Create a design variation of this garment: ${p || 'a stylistic variation'}. Keep it recognizably related to the original but with this specific change applied.`,
 };
 
-app.post('/api/design/ai-image', async (req, res) => {
+app.post('/api/design/ai-image', metered('design-ai-image'), async (req, res) => {
   console.log("📥 Received AI image request...");
   try {
     const { mode, prompt, images } = req.body;
@@ -1519,7 +1639,7 @@ const ELEMENT_MODE_EXTRA_NEGATIVE = {
   'silhouette': 'color, fabric texture, painting, 3d render, photorealistic render, model, mannequin, shading, gradient, sketch shading, cross-hatching',
 };
 
-app.post('/api/design/generate-element', async (req, res) => {
+app.post('/api/design/generate-element', metered('design-generate-element'), async (req, res) => {
   console.log("📥 Received element generation request...");
   try {
     const { mode, prompt } = req.body;
@@ -1534,7 +1654,7 @@ app.post('/api/design/generate-element', async (req, res) => {
   }
 });
 
-app.post('/api/design/color-palette', async (req, res) => {
+app.post('/api/design/color-palette', metered('design-color-palette'), async (req, res) => {
   console.log("📥 Received color palette request...");
   try {
     const { imageBase64, brief } = req.body;
@@ -1555,7 +1675,7 @@ Exactly 5 entries: one primary, one secondary, one accent, and two neutrals.`;
   }
 });
 
-app.post('/api/design/trend-inspiration', async (req, res) => {
+app.post('/api/design/trend-inspiration', metered('design-trend-inspiration'), async (req, res) => {
   console.log("📥 Received trend inspiration request...");
   try {
     const { category } = req.body;
@@ -1770,7 +1890,7 @@ app.post('/api/social/publish/:platform', async (req, res) => {
 // here alongside the message and a short prior-turn transcript. callGemini
 // always asks for JSON back, so a conversational reply gets wrapped in a
 // single { "reply": "..." } object rather than returned as raw text.
-app.post('/api/chat-reply', async (req, res) => {
+app.post('/api/chat-reply', metered('chat-reply'), async (req, res) => {
   console.log("📥 Received chat message...");
   try {
     const { message, history, brandContext } = req.body;
@@ -1827,7 +1947,7 @@ const COST_LEVERS = [
   { id: 'premium-trim', label: 'Add a premium trim (woven label, metal hardware)', type: 'toggle', hint: '' },
 ];
 
-app.post('/api/quote-economics', async (req, res) => {
+app.post('/api/quote-economics', metered('quote-economics'), async (req, res) => {
   console.log("📥 Received quote economics request...");
   try {
     const { vendor, product, quote, bom } = req.body;
@@ -1882,7 +2002,7 @@ Return a JSON object with exactly this structure:
   }
 });
 
-app.post('/api/cost-simulator', async (req, res) => {
+app.post('/api/cost-simulator', metered('cost-simulator'), async (req, res) => {
   console.log("📥 Received cost simulator request...");
   try {
     const { vendor, product, quote, bom } = req.body;

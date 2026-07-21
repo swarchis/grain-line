@@ -11,7 +11,7 @@ export const PLANS = [
     price: '$0',
     priceSuffix: 'forever',
     priceId: null,
-    limits: { products: 1, teamMembers: 1, aiPerMonth: 0 },
+    limits: { products: 1, teamMembers: 1, aiPerMonth: 0, creditsPerMonth: 0 },
     summary: [
       '1 active product',
       'Manual tech-pack builder',
@@ -42,7 +42,7 @@ export const PLANS = [
     price: '$29',
     priceSuffix: '/month',
     priceId: 'basic',
-    limits: { products: 10, teamMembers: 3, aiPerMonth: 20 },
+    limits: { products: 10, teamMembers: 3, aiPerMonth: 20, creditsPerMonth: 500 },
     summary: [
       'Up to 10 active products',
       'AI design and tech-pack tools',
@@ -79,7 +79,7 @@ export const PLANS = [
     price: '$79',
     priceSuffix: '/month',
     priceId: 'premium',
-    limits: { products: Infinity, teamMembers: 10, aiPerMonth: 200 },
+    limits: { products: Infinity, teamMembers: 10, aiPerMonth: 200, creditsPerMonth: 1500 },
     summary: [
       'Unlimited products',
       'Full AI design and production suite',

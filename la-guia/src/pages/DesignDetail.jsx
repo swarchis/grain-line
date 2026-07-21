@@ -19,6 +19,7 @@ import { blobToBase64 } from '../lib/designImages.js';
 import Breadcrumbs from '../components/Breadcrumbs.jsx';
 import Splitter from '../components/Splitter.jsx';
 import AssetsTab from '../components/design-studio/AssetsTab.jsx';
+import { aiPost } from '../lib/aiApi.js';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const DESIGN_STATUSES = ['Sketching', 'Refining', 'Ready'];
@@ -209,11 +210,7 @@ export default function DesignDetail() {
         reader.readAsDataURL(blob);
       });
           
-      const apiRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/analyze-design`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64data })
-      });
+      const apiRes = await aiPost('/api/analyze-design', { imageBase64: base64data });
       
       const data = await apiRes.json();
       if (data.ok) {
@@ -277,11 +274,7 @@ export default function DesignDetail() {
         .getPublicUrl(fileName);
       
       // 2. ASK AI TO GENERATE TECH PACK
-      const apiRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-tech-pack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64data })
-      });
+      const apiRes = await aiPost('/api/generate-tech-pack', { imageBase64: base64data });
       
       const data = await apiRes.json();
       if (!data.ok) throw new Error(data.error);

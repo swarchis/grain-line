@@ -6,6 +6,7 @@ import { useVendors } from './VendorsContext.jsx';
 import { useProduction } from './ProductionContext.jsx';
 import { useMaterials } from './MaterialsContext.jsx';
 import { useTeam } from './TeamContext.jsx';
+import { aiPost } from '../lib/aiApi.js';
 
 const ChatContext = createContext(null);
 
@@ -191,11 +192,7 @@ export function ChatProvider({ children }) {
       setSendingAI(true);
       try {
         const history = (messagesByChat[chat.id] || []).map(m => ({ senderType: m.sender_type, body: m.body }));
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/chat-reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: body.trim(), history, brandContext: buildBrandContext() }),
-        });
+        const res = await aiPost('/api/chat-reply', { message: body.trim(), history, brandContext: buildBrandContext() });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
         const { data: aiMsg, error: aiError } = await supabase

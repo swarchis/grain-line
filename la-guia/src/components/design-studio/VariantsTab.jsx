@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
+import { aiPost } from '../../lib/aiApi.js';
 
 export default function VariantsTab({ productId, variants, onChange, onCapture, onApplyToCanvas, canUseAI, aiRemaining, logUsage }) {
   const [prompt, setPrompt] = useState('');
@@ -13,11 +14,7 @@ export default function VariantsTab({ productId, variants, onChange, onCapture, 
     setError(null);
     try {
       const image = await onCapture();
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/ai-image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'variant', prompt: prompt.trim(), images: [image] }),
-      });
+      const res = await aiPost('/api/design/ai-image', { mode: 'variant', prompt: prompt.trim(), images: [image] });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('design-variant');

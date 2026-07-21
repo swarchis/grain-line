@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from './AuthContext.jsx';
 import { uploadDesignImage } from '../lib/designImages.js';
+import { setActiveBrandId } from '../lib/aiApi.js';
 
 const ProductsContext = createContext(null);
 
@@ -23,6 +24,9 @@ export function ProductsProvider({ children }) {
   const [productAssets, setProductAssets] = useState({});
 
   const uploadedFiles = useRef(new Map());
+
+  // Keep the AI API helper's brand id in sync so metered calls carry brandId.
+  useEffect(() => { setActiveBrandId(activeBrand?.id || null); }, [activeBrand?.id]);
 
   // Load every brand this user owns or has been added to as a team member
   useEffect(() => {

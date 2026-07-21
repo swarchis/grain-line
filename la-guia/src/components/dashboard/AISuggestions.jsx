@@ -4,6 +4,7 @@ import { useProducts } from '../../context/ProductsContext.jsx';
 import { useProduction } from '../../context/ProductionContext.jsx';
 import { useTeam } from '../../context/TeamContext.jsx';
 import { useAIUsage } from '../../context/AIUsageContext.jsx';
+import { aiPost } from '../../lib/aiApi.js';
 
 const CATEGORY_PATH = {
   readiness: '/readiness',
@@ -55,18 +56,14 @@ export default function AISuggestions() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/dashboard-suggestions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await aiPost('/api/dashboard-suggestions', {
           brand: { name: activeBrand.name, plan_tier: activeBrand.plan_tier },
           products: products.map(p => ({ name: p.name, stage: p.stage, readiness: p.readiness, risk: p.risk, budget: p.budget })),
           upcomingDeadlines,
           gateFlags,
           aiUsage: { used: usedThisMonth, limit },
           seats: { used: members.length, limit: plan.limits.teamMembers },
-        }),
-      });
+        });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setSuggestions(data.suggestions);

@@ -11,6 +11,7 @@ import BulkActionBar from '../components/BulkActionBar.jsx';
 import { ContextMenuTarget } from '../components/ContextMenu.jsx';
 import { SkeletonCard } from '../components/Skeleton.jsx';
 import { base64ToBlob } from '../lib/designImages.js';
+import { aiPost } from '../lib/aiApi.js';
 
 const STATUS_COLOR = { Sketching: 'var(--ink-3)', Refining: 'var(--c-design)', Ready: 'var(--green)' };
 const DESIGN_STATUSES = ['Sketching', 'Refining', 'Ready'];
@@ -132,11 +133,7 @@ export default function Design() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/design/generate-element`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'silhouette', prompt: garmentType }),
-      });
+      const res = await aiPost('/api/design/generate-element', { mode: 'silhouette', prompt: garmentType });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('silhouette');

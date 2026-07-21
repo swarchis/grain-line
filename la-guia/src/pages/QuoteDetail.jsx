@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { aiPost } from '../lib/aiApi.js';
 import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
@@ -169,11 +170,7 @@ export default function QuoteDetail() {
     setBreakdownLoading(true);
     setBreakdownError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/quote-economics`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendor, product, quote, bom }),
-      });
+      const res = await aiPost('/api/quote-economics', { vendor, product, quote, bom });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('quote-cost-breakdown');
@@ -195,11 +192,7 @@ export default function QuoteDetail() {
     setSimLoading(true);
     setSimError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/cost-simulator`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendor, product, quote, bom }),
-      });
+      const res = await aiPost('/api/cost-simulator', { vendor, product, quote, bom });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       await logUsage('quote-cost-simulator');

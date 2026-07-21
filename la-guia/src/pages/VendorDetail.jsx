@@ -10,6 +10,7 @@ import PriceHistoryChart from '../components/PriceHistoryChart.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import CommentsPanel from '../components/CommentsPanel.jsx';
 import Breadcrumbs from '../components/Breadcrumbs.jsx';
+import { aiPost } from '../lib/aiApi.js';
 
 const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'launched'];
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
@@ -181,17 +182,13 @@ export default function VendorDetail() {
     setDraftError(null);
     try {
       const selectedProductObj = products.find(p => p.id === selectedProduct);
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/draft-vendor-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await aiPost('/api/draft-vendor-email', {
           vendorName: vendor.name,
           productName: selectedProductObj?.name,
           garmentType: selectedProductObj?.category,
           preferences: { quantity, targetUnitCost: targetCost, deadline },
           ask: emailAsk,
-        }),
-      });
+        });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setDraft(data.draft);
@@ -237,17 +234,13 @@ export default function VendorDetail() {
         .filter(q => q.product_id === fitProduct)
         .map(q => ({ status: q.status, amount: q.amount, preferences: q.preferences }));
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/analyze-vendor-fit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await aiPost('/api/analyze-vendor-fit', {
           vendor,
           product: { ...productObj, budget: budgetValue },
           brand: activeBrand,
           quoteHistory: productQuotes,
           bom: techPack?.bom || [],
-        }),
-      });
+        });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setFitResult(data.analysis);
