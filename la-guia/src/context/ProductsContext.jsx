@@ -132,6 +132,20 @@ export function ProductsProvider({ children }) {
               fabricTags: d.fabric_tags || [],
             };
           });
+
+          // Attach each design's newest saved snapshot as a preview image, in
+          // one batched query. Without this, list previews fall back to vector
+          // icons — which meant AI-generated silhouettes (no vector data, no
+          // template) rendered as a generic tee.
+          const { data: versionData } = await supabase
+            .from('design_versions')
+            .select('product_id, image_url, created_at')
+            .in('product_id', productIds)
+            .order('created_at', { ascending: false });
+          (versionData || []).forEach(v => {
+            const entry = designsMap[v.product_id];
+            if (entry && !entry.previewUrl) entry.previewUrl = v.image_url; // rows arrive newest-first
+          });
         }
         setDesigns(designsMap);
       } catch (err) {

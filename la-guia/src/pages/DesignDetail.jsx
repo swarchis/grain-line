@@ -83,14 +83,16 @@ export default function DesignDetail() {
   const design = designs[id];
   const uploadedFile = getUploadedFile(id);
 
-  // Uploaded designs keep their working file only in ProductsContext's
-  // in-memory map for the session — after a reload it's gone, and Photopea
-  // used to come up on its blank start screen. Fall back to the newest saved
-  // snapshot in design_versions (creation writes an 'Initial design' row).
+  // Uploaded designs and AI-generated silhouettes keep their working file only
+  // in ProductsContext's in-memory map for the session — after a reload it's
+  // gone, and Photopea used to come up on its blank start screen. Fall back to
+  // the newest saved snapshot in design_versions (creation writes an
+  // 'Initial design' row for both). Template designs re-fetch their template
+  // asset instead, so they don't need this.
   const [persistedFile, setPersistedFile] = useState(null);
   useEffect(() => {
     setPersistedFile(null);
-    if (!design || design.baseType !== 'upload' || uploadedFile) return undefined;
+    if (!design || !['upload', 'ai-silhouette'].includes(design.baseType) || uploadedFile) return undefined;
     let cancelled = false;
     (async () => {
       try {

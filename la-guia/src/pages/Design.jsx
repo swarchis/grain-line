@@ -354,10 +354,12 @@ export default function Design() {
                       <i className="ph ph-archive" />
                     </button>
                     <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', marginTop: 6 }}>
-                      <div style={{ width: 44, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-3)', borderRadius: 8, color: 'var(--ink-3)', flexShrink: 0 }}>
-                        {d?.baseType === 'ai-silhouette' && d?.aiPaths?.paths?.length
-                          ? <CustomSilhouette paths={d.aiPaths.paths} accents={d.aiPaths.accents} size={30} />
-                          : <GarmentSilhouette type={d?.silhouette || 'tee'} size={30} />}
+                      <div style={{ width: 44, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-3)', borderRadius: 8, color: 'var(--ink-3)', flexShrink: 0, overflow: 'hidden' }}>
+                        {d?.previewUrl
+                          ? <img src={d.previewUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : d?.baseType === 'ai-silhouette' && d?.aiPaths?.paths?.length
+                            ? <CustomSilhouette paths={d.aiPaths.paths} accents={d.aiPaths.accents} size={30} />
+                            : <GarmentSilhouette type={d?.silhouette || 'tee'} size={30} />}
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
