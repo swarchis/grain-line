@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useMotionValue, useSpring, useTransform, useScroll, useReducedMotion } from 'framer-motion';
 import { STAGES } from '../../data/mockData.js';
 import { PLANS } from '../../data/plans.js';
+import { Capacitor } from '@capacitor/core';
 import { NeedleA } from './NeedleA.jsx';
 
 // The WebGL gate (with all of three.js) is the single heaviest thing on the
@@ -631,8 +632,11 @@ export default function Welcome() {
   const navigate = useNavigate();
   // The liquid-logo gate plays on every fresh open; reduced-motion users go
   // straight to the page.
+  // Skip the WebGL intro inside the native app (too heavy on phones) and for
+  // reduced-motion users; it only plays in the browser.
   const [introDone, setIntroDone] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    Capacitor.isNativePlatform() ||
+    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
   );
 
   return (

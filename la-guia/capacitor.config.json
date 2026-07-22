@@ -1,0 +1,11 @@
+{
+  "appId": "app.atelierlabs",
+  "appName": "Atelier",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}
