@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
+import CreditCost from '../components/CreditCost.jsx';
 import { getPlan } from '../data/plans.js';
 import GarmentSilhouette, { CustomSilhouette, GARMENT_TYPES } from '../components/GarmentSilhouette.jsx';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.jsx';
@@ -27,7 +28,7 @@ export default function Design() {
     products, designs, createDesign, deleteProduct, activeBrand, duplicateProduct, setProductStatus,
     archivedProducts, loadArchivedProducts, updateDesignStatus, loading: dataLoading,
   } = useProducts();
-  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, remaining: aiRemaining, logUsage } = useAIUsage();
   const [showNew, setShowNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [customType, setCustomType] = useState('');
@@ -129,7 +130,7 @@ export default function Design() {
     const garmentType = customType.trim();
     if (!garmentType) return;
     if (atProductLimit) { setGenerateError(`You're at your plan's limit of ${plan.limits.products} active products — upgrade to add more.`); return; }
-    if (!canUseAI) { setGenerateError(plan.limits.aiPerMonth === 0 ? 'AI features need the Basic plan or higher.' : "You've used all your AI generations for this month — upgrade for more."); return; }
+    if (!canAfford('design-generate-element')) { openTopup(); return; }
     setGenerating(true);
     setGenerateError(null);
     try {
@@ -237,16 +238,16 @@ export default function Design() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12.5, color: 'var(--ink-3)', flex: 1, minWidth: 200 }}>
                     Don't see your garment type above? AI will sketch a blank starting outline for you to build on.
-                    {canUseAI && <span style={{ color: 'var(--ink-4)' }}> ({aiRemaining} left this month)</span>}
                   </span>
                   <input
                     className="form-input" style={{ width: 160 }} placeholder="e.g. Balaclava"
                     value={customType} onChange={e => { setCustomType(e.target.value); setGenerateError(null); }}
                     onKeyDown={e => e.key === 'Enter' && !generating && customType.trim() && startFromAI()}
-                    disabled={generating || !canUseAI}
+                    disabled={generating}
                   />
-                  <button className="btn btn-sm" onClick={startFromAI} disabled={generating || loading || !customType.trim() || !canUseAI}>
-                    {generating ? <><i className="ph ph-spinner ph-spin" /> Sketching…</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade to use AI</> : 'Generate silhouette'}
+                  <button className="btn btn-sm" onClick={startFromAI} disabled={generating || loading || !customType.trim()}>
+                    {generating ? <><i className="ph ph-spinner ph-spin" /> Sketching…</> : 'Generate silhouette'}
+                    {!generating && <CreditCost feature="design-generate-element" style={{ marginLeft: 6 }} />}
                   </button>
                 </div>
                 {generateError && (

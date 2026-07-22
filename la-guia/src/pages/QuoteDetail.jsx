@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { aiPost } from '../lib/aiApi.js';
+import CreditCost from '../components/CreditCost.jsx';
 import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
@@ -58,7 +59,7 @@ export default function QuoteDetail() {
   const navigate = useNavigate();
   const { quotes, vendors, updateQuote, negotiationsByQuote, loadNegotiations, addNegotiation } = useVendors();
   const { products, activeBrand } = useProducts();
-  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, remaining: aiRemaining, logUsage } = useAIUsage();
 
   const quote = quotes.find(q => q.id === id);
   const vendor = vendors.find(v => v.id === quote?.vendor_id);
@@ -165,7 +166,7 @@ export default function QuoteDetail() {
   };
 
   const runCostBreakdown = async () => {
-    if (!canUseAI) { setBreakdownError('AI cost estimates need an available plan — upgrade in Settings > Billing.'); return; }
+    if (!canAfford('quote-economics')) { openTopup(); return; }
     if (quote.amount == null) { setBreakdownError('This quote needs an amount first — mark it received with a $/unit price.'); return; }
     setBreakdownLoading(true);
     setBreakdownError(null);
@@ -188,7 +189,7 @@ export default function QuoteDetail() {
   };
 
   const runCostSimulator = async () => {
-    if (!canUseAI) { setSimError('AI cost estimates need an available plan — upgrade in Settings > Billing.'); return; }
+    if (!canAfford('cost-simulator')) { openTopup(); return; }
     setSimLoading(true);
     setSimError(null);
     try {
@@ -324,8 +325,9 @@ export default function QuoteDetail() {
         <div className="card-raised" style={{ marginBottom: 24 }}>
           <div className="card-header">
             <span className="card-title">Cost breakdown</span>
-            <button className="btn btn-sm" onClick={runCostBreakdown} disabled={breakdownLoading || !canUseAI}>
-              {breakdownLoading ? <><i className="ph ph-spinner ph-spin" /> Estimating…</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade</> : <><i className="ph ph-magic-wand" /> {economics ? 'Re-estimate' : 'Estimate breakdown'}</>}
+            <button className="btn btn-sm" onClick={runCostBreakdown} disabled={breakdownLoading}>
+              {breakdownLoading ? <><i className="ph ph-spinner ph-spin" /> Estimating…</> : <><i className="ph ph-magic-wand" /> {economics ? 'Re-estimate' : 'Estimate breakdown'}</>}
+              {!breakdownLoading && <CreditCost feature="quote-economics" style={{ marginLeft: 6 }} />}
             </button>
           </div>
           <div className="card-body">
@@ -378,8 +380,9 @@ export default function QuoteDetail() {
           <div className="card-raised">
             <div className="card-header">
               <span className="card-title">AI cost simulator</span>
-              <button className="btn btn-sm" onClick={runCostSimulator} disabled={simLoading || !canUseAI}>
-                {simLoading ? <><i className="ph ph-spinner ph-spin" /> Estimating…</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade</> : <><i className="ph ph-magic-wand" /> {levers ? 'Re-estimate' : 'Run simulator'}</>}
+              <button className="btn btn-sm" onClick={runCostSimulator} disabled={simLoading}>
+                {simLoading ? <><i className="ph ph-spinner ph-spin" /> Estimating…</> : <><i className="ph ph-magic-wand" /> {levers ? 'Re-estimate' : 'Run simulator'}</>}
+                {!simLoading && <CreditCost feature="cost-simulator" style={{ marginLeft: 6 }} />}
               </button>
             </div>
             <div className="card-body">
@@ -447,8 +450,8 @@ export default function QuoteDetail() {
           </div>
         </div>
 
-        {canUseAI && (economics || levers) && (
-          <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'right', marginTop: -14 }}>{aiRemaining} AI estimates left this month</div>
+        {(economics || levers) && (
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'right', marginTop: -14 }}>{aiRemaining.toLocaleString()} AI credits left</div>
         )}
 
         <div style={{ marginTop: 24 }}>

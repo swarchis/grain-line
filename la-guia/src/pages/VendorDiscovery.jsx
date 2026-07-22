@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
+import CreditCost from '../components/CreditCost.jsx';
 import { trustTagClass } from '../lib/format.js';
 import TabBar from '../components/TabBar.jsx';
 import { getPlan } from '../data/plans.js';
@@ -195,7 +196,7 @@ export default function VendorDiscovery() {
   const { vendors, quotes, loading, addVendor, toggleFavorite, createRFQ } = useVendors();
   const { activeBrand, products } = useProducts();
   const techPackProducts = products.filter(p => ['techpack', 'sourcing', 'sampling', 'production', 'launched'].includes(p.stage));
-  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, remaining: aiRemaining, logUsage } = useAIUsage();
   const plan = getPlan(activeBrand?.plan_tier || 'free');
   const searchLocked = plan.id === 'free';
   const [tab, setTab] = useState('discover');
@@ -267,6 +268,7 @@ export default function VendorDiscovery() {
 
   const handleParse = async () => {
     if (!pasteText.trim()) return;
+    if (!canAfford('parse-vendor')) { openTopup(); return; }
     setParsing(true);
     setParseError(null);
     try {
@@ -326,7 +328,7 @@ export default function VendorDiscovery() {
     e.preventDefault();
     if (!hasAnyFilter) return;
     if (searchLocked) { setSearchError('Vendor search needs the Basic plan or higher — upgrade in Settings > Billing.'); return; }
-    if (!canUseAI) { setSearchError("You've used all your AI generations for this month — upgrade for more in Settings > Billing."); return; }
+    if (!canAfford('search-vendors')) { openTopup(); return; }
     setSearching(true);
     setSearchError(null);
     setResults(null);
@@ -408,8 +410,9 @@ export default function VendorDiscovery() {
                         placeholder="e.g. an Alibaba listing URL, a forwarded vendor email, or a screenshot's transcribed text"
                         value={pasteText} onChange={e => setPasteText(e.target.value)}
                       />
-                      <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} onClick={handleParse} disabled={parsing || !pasteText.trim()}>
-                        <i className="ph ph-magic-wand" /> {parsing ? 'Reading…' : 'Auto-fill with AI'}
+                      <button type="button" className="btn btn-sm" style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={handleParse} disabled={parsing || !pasteText.trim()}>
+                        <span><i className="ph ph-magic-wand" /> {parsing ? 'Reading…' : 'Auto-fill with AI'}</span>
+                        <CreditCost feature="parse-vendor" />
                       </button>
                       {parseError && <div className="form-hint" style={{ color: 'var(--red)' }}>{parseError}</div>}
                     </div>
@@ -549,10 +552,11 @@ export default function VendorDiscovery() {
 
                     <div className="form-hint" style={{ marginBottom: 12 }}>
                       Fill in as many fields as you can — each one sharpens the search. Runs a real web search, then AI extracts candidate vendors from actual results — nothing here is pre-loaded or made up.
-                      {canUseAI && !searchLocked && <span style={{ color: 'var(--ink-4)' }}> ({aiRemaining} AI searches left this month)</span>}
+                      {!searchLocked && <span style={{ color: 'var(--ink-4)' }}> ({aiRemaining.toLocaleString()} AI credits left)</span>}
                     </div>
-                    <button className="btn btn-primary" type="submit" disabled={searching || !hasAnyFilter || searchLocked || !canUseAI}>
-                      {searching ? <><i className="ph ph-spinner ph-spin" /> Searching…</> : !canUseAI && !searchLocked ? <><i className="ph ph-lock-simple" /> Upgrade for more AI searches</> : <><i className="ph ph-magnifying-glass" /> Search the web</>}
+                    <button className="btn btn-primary" type="submit" disabled={searching || !hasAnyFilter || searchLocked}>
+                      {searching ? <><i className="ph ph-spinner ph-spin" /> Searching…</> : <><i className="ph ph-magnifying-glass" /> Search the web</>}
+                      {!searching && !searchLocked && <CreditCost feature="search-vendors" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
                     </button>
                   </div>
                 </form>

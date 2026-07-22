@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { aiPost } from '../lib/aiApi.js';
+import { useAIUsage } from '../context/AIUsageContext.jsx';
+import CreditCost from './CreditCost.jsx';
 
 const FIELDS = [
   { key: 'bom', label: 'Materials (BOM)', placeholder: 'e.g. "14oz cotton twill body, poly-cotton lining, matte YKK zipper"' },
@@ -17,6 +19,7 @@ const FIELDS = [
 ];
 
 export default function TechPackQuestionnaire({ open, onClose, category, onComplete, canUseAI, logUsage }) {
+  const { canAfford, openTopup } = useAIUsage();
   const [answers, setAnswers] = useState({});
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -27,7 +30,7 @@ export default function TechPackQuestionnaire({ open, onClose, category, onCompl
   const setField = (key, value) => setAnswers(prev => ({ ...prev, [key]: value }));
 
   const generateWithAI = async () => {
-    if (!canUseAI) { setError('Upgrade your plan to use AI tech pack generation.'); return; }
+    if (!canAfford('generate-tech-pack-full')) { openTopup(); return; }
     setGenerating(true);
     setError(null);
     try {
@@ -99,8 +102,9 @@ export default function TechPackQuestionnaire({ open, onClose, category, onCompl
           <button className="btn btn-sm" onClick={startManually} disabled={generating || starting}>
             {starting ? 'Starting…' : 'Start blank / from my answers'}
           </button>
-          <button className="btn btn-sm btn-primary" onClick={generateWithAI} disabled={generating || starting || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI tech pack generation' : undefined}>
-            {generating ? <><i className="ph ph-circle-notch ph-spin" /> Generating…</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade to use AI</> : <><i className="ph ph-sparkle" /> Generate with AI</>}
+          <button className="btn btn-sm btn-primary" onClick={generateWithAI} disabled={generating || starting}>
+            {generating ? <><i className="ph ph-circle-notch ph-spin" /> Generating…</> : <><i className="ph ph-sparkle" /> Generate with AI</>}
+            {!generating && <CreditCost feature="generate-tech-pack-full" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
           </button>
         </div>
       </div>

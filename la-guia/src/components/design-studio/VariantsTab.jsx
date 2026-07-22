@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
 import { aiPost } from '../../lib/aiApi.js';
+import { useAIUsage } from '../../context/AIUsageContext.jsx';
+import CreditCost from '../CreditCost.jsx';
 
 export default function VariantsTab({ productId, variants, onChange, onCapture, onApplyToCanvas, canUseAI, aiRemaining, logUsage }) {
+  const { canAfford, openTopup } = useAIUsage();
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const generate = async () => {
-    if (!canUseAI) { setError('Upgrade your plan to generate variants.'); return; }
+    if (!canAfford('design-ai-image')) { openTopup(); return; }
     if (!prompt.trim()) { setError('Describe the variation first (e.g. "cropped length, contrast trim").'); return; }
     setLoading(true);
     setError(null);
@@ -41,8 +44,9 @@ export default function VariantsTab({ productId, variants, onChange, onCapture, 
         <span className="card-title" style={{ display: 'block', marginBottom: 12 }}>Generate a variant</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <input className="form-input" placeholder='e.g. "cropped length, contrast trim"' value={prompt} onChange={e => setPrompt(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn btn-sm btn-primary" onClick={generate} disabled={loading || !canUseAI}>
-            {loading ? 'Generating…' : <><i className="ph ph-sparkle" /> Generate ({aiRemaining} left)</>}
+          <button className="btn btn-sm btn-primary" onClick={generate} disabled={loading}>
+            {loading ? 'Generating…' : <><i className="ph ph-sparkle" /> Generate</>}
+            {!loading && <CreditCost feature="design-ai-image" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
           </button>
         </div>
         {error && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{error}</div>}

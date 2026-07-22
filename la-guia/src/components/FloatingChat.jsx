@@ -19,7 +19,7 @@ export default function FloatingChat() {
   const { user } = useAuth();
   const { activeBrand } = useProducts();
   const { members } = useTeam();
-  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, costOf, remaining: aiRemaining, logUsage } = useAIUsage();
   const {
     aiChat, groupChats, messagesByChat, sendingAI, hasUnread, loadError,
     addableMembers, loadMessages, sendMessage, createGroupChat, markRead, pollMs, refresh,
@@ -70,7 +70,7 @@ export default function FloatingChat() {
     e.preventDefault();
     const text = draft.trim();
     if (!text || !activeChat) return;
-    if (activeChat.type === 'ai' && !canUseAI) { setSendError("You've used all your AI generations for this month — upgrade for more in Settings > Billing."); return; }
+    if (activeChat.type === 'ai' && !canAfford('chat-reply')) { openTopup(); return; }
     setDraft('');
     setSendError(null);
     try {
@@ -259,24 +259,20 @@ export default function FloatingChat() {
 
               <form onSubmit={handleSend} style={{ padding: 12, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
                 {sendError && <div className="form-hint" style={{ color: 'var(--red)', marginBottom: 8 }}>{sendError}</div>}
-                {activeChat.type === 'ai' && !canUseAI ? (
-                  <div className="form-hint" style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', color: 'var(--amber)' }}>
-                    <i className="ph ph-lock-simple" /> You're out of AI generations this month — upgrade in Settings &gt; Billing.
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="form-input" placeholder="Type a message…" value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button className="btn btn-sm btn-primary" type="submit" disabled={!draft.trim() || sendingAI}>
+                    <i className="ph ph-paper-plane-tilt" />
+                  </button>
+                </div>
+                {activeChat.type === 'ai' && (
+                  <div style={{ fontSize: 10.5, color: 'var(--ink-4)', marginTop: 6 }}>
+                    {aiRemaining.toLocaleString()} credits left · {costOf('chat-reply')} per message
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      className="form-input" placeholder="Type a message…" value={draft}
-                      onChange={e => setDraft(e.target.value)}
-                      style={{ flex: 1 }}
-                    />
-                    <button className="btn btn-sm btn-primary" type="submit" disabled={!draft.trim() || sendingAI}>
-                      <i className="ph ph-paper-plane-tilt" />
-                    </button>
-                  </div>
-                )}
-                {activeChat.type === 'ai' && canUseAI && (
-                  <div style={{ fontSize: 10.5, color: 'var(--ink-4)', marginTop: 6 }}>{aiRemaining} AI messages left this month</div>
                 )}
               </form>
             </>

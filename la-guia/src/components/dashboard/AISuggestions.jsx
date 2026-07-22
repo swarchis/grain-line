@@ -5,6 +5,7 @@ import { useProduction } from '../../context/ProductionContext.jsx';
 import { useTeam } from '../../context/TeamContext.jsx';
 import { useAIUsage } from '../../context/AIUsageContext.jsx';
 import { aiPost } from '../../lib/aiApi.js';
+import CreditCost from '../CreditCost.jsx';
 
 const CATEGORY_PATH = {
   readiness: '/readiness',
@@ -28,7 +29,7 @@ export default function AISuggestions() {
   const { activeBrand, products } = useProducts();
   const { orders } = useProduction();
   const { members } = useTeam();
-  const { canUse, plan, logUsage, limit, usedThisMonth } = useAIUsage();
+  const { canAfford, openTopup, plan, logUsage, limit, usedThisMonth } = useAIUsage();
 
   const [suggestions, setSuggestions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +54,7 @@ export default function AISuggestions() {
 
   const fetchSuggestions = async () => {
     if (!activeBrand || loading) return;
+    if (!canAfford('dashboard-suggestions')) { openTopup(); return; }
     setLoading(true);
     setError(null);
     try {
@@ -81,27 +83,18 @@ export default function AISuggestions() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
         <span className="card-title" style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11 }}>AI suggestions</span>
         {suggestions && (
-          <span style={{ fontSize: 11, color: 'var(--ink-3)', cursor: canUse ? 'pointer' : 'default' }} onClick={canUse ? fetchSuggestions : undefined}>
-            {loading ? 'Refreshing…' : canUse ? 'Refresh' : ''}
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer' }} onClick={fetchSuggestions}>
+            {loading ? 'Refreshing…' : 'Refresh'}
           </span>
         )}
       </div>
 
-      {!canUse && !suggestions && (
-        <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>
-          {plan.id === 'free' ? (
-            <>Upgrade your plan to get AI suggestions for your workspace. <span style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate('/settings')}>See plans →</span></>
-          ) : (
-            <>You've used all {limit} AI generations this month — suggestions will be back next month.</>
-          )}
-        </div>
-      )}
-
-      {canUse && !suggestions && !loading && (
+      {!suggestions && !loading && (
         <div>
           <div style={{ fontSize: 12.5, color: 'var(--ink-4)', fontStyle: 'italic', marginBottom: 10 }}>Get a quick read on what needs attention today.</div>
           <button className="btn btn-sm btn-primary" onClick={fetchSuggestions}>
             <i className="ph ph-sparkle" /> Get suggestions
+            <CreditCost feature="dashboard-suggestions" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />
           </button>
         </div>
       )}

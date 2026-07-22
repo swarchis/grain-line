@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { base64ToDataUrl, base64ToBlob, uploadDesignImage } from '../../lib/designImages.js';
 import { aiPost } from '../../lib/aiApi.js';
+import { useAIUsage } from '../../context/AIUsageContext.jsx';
+import CreditCost from '../CreditCost.jsx';
 
 // "Transform" tools edit the founder's actual existing design (Gemini's
 // image model, which can take a reference image) — the result replaces the
@@ -43,11 +45,13 @@ function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLaye
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null); // { base64, mimeType }
   const [saving, setSaving] = useState(false);
+  const { canAfford, openTopup } = useAIUsage();
+  const feature = kind === 'addition' ? 'design-generate-element' : 'design-ai-image';
 
   const promptMissing = tool.promptRequired && !prompt.trim();
 
   const generate = async () => {
-    if (!canUseAI) { setError('Upgrade your plan to use AI image tools.'); return; }
+    if (!canAfford(feature)) { openTopup(); return; }
     if (promptMissing) { setError('This tool needs a short description first.'); return; }
     setLoading(true);
     setError(null);
@@ -107,15 +111,10 @@ function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLaye
             <input className="form-input" placeholder={tool.promptPlaceholder} value={prompt} onChange={e => setPrompt(e.target.value)} />
           )}
 
-          {!canUseAI ? (
-            <div className="form-hint" style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', color: 'var(--amber)' }}>
-              <i className="ph ph-lock-simple" style={{ marginRight: 4 }} /> Upgrade your plan to use AI image tools.
-            </div>
-          ) : (
-            <button className="btn btn-sm btn-primary" onClick={generate} disabled={loading || promptMissing} style={{ alignSelf: 'flex-start' }}>
-              {loading ? <><i className="ph ph-circle-notch ph-spin" /> Generating…</> : <><i className="ph ph-sparkle" /> Generate ({aiRemaining} left)</>}
-            </button>
-          )}
+          <button className="btn btn-sm btn-primary" onClick={generate} disabled={loading || promptMissing} style={{ alignSelf: 'flex-start' }}>
+            {loading ? <><i className="ph ph-circle-notch ph-spin" /> Generating…</> : <><i className="ph ph-sparkle" /> Generate</>}
+            {!loading && <CreditCost feature={feature} style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
+          </button>
 
           {error && <div style={{ fontSize: 12, color: 'var(--red)' }}>{error}</div>}
 

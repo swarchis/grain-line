@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useVendors } from '../context/VendorsContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useProduction } from '../context/ProductionContext.jsx';
+import { useAIUsage } from '../context/AIUsageContext.jsx';
+import CreditCost from '../components/CreditCost.jsx';
 import { supabase } from '../lib/supabase.js';
 import { trustTagClass } from '../lib/format.js';
 import { TRUST_LABELS, ONBOARDING_STAGES } from './VendorDiscovery.jsx';
@@ -50,6 +52,7 @@ export default function VendorDetail() {
   const { vendors, quotes, requestQuote, updateVendor, toggleFavorite, toggleBlock } = useVendors();
   const { products, activeBrand, updateProduct } = useProducts();
   const { orders } = useProduction();
+  const { canAfford, openTopup } = useAIUsage();
 
   const [fitProduct, setFitProduct] = useState('');
   const [fitBudget, setFitBudget] = useState('');
@@ -178,6 +181,7 @@ export default function VendorDetail() {
   };
 
   const draftEmail = async () => {
+    if (!canAfford('draft-vendor-email')) { openTopup(); return; }
     setDrafting(true);
     setDraftError(null);
     try {
@@ -214,6 +218,7 @@ export default function VendorDetail() {
 
   const analyzeFit = async () => {
     if (!fitProduct) return;
+    if (!canAfford('analyze-vendor-fit')) { openTopup(); return; }
     setAnalyzingFit(true);
     setFitError(null);
     try {
@@ -378,6 +383,7 @@ export default function VendorDetail() {
               </div>
               <button className="btn btn-primary" onClick={analyzeFit} disabled={analyzingFit || !fitProduct}>
                 {analyzingFit ? <><i className="ph ph-circle-notch" /> Analyzing…</> : <><i className="ph ph-magic-wand" /> Analyze fit</>}
+                {!analyzingFit && <CreditCost feature="analyze-vendor-fit" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
               </button>
             </div>
             {fitProduct && !fitBudget && <div className="form-hint" style={{ marginTop: 8, color: 'var(--amber)' }}>No budget set — the analysis will have nothing to compare cost against. Worth entering one.</div>}
@@ -423,8 +429,9 @@ export default function VendorDetail() {
                     <div className="form-hint">Uses whatever quantity / target cost / deadline you've entered in the quote form above, if any. AI-written — review before sending.</div>
                   </div>
                   {draftError && <div className="form-hint" style={{ color: 'var(--red)', marginBottom: 12 }}>{draftError}</div>}
-                  <button className="btn btn-primary" onClick={draftEmail} disabled={drafting}>
-                    <i className="ph ph-magic-wand" /> {drafting ? 'Drafting…' : 'Draft with AI'}
+                  <button className="btn btn-primary" onClick={draftEmail} disabled={drafting} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span><i className="ph ph-magic-wand" /> {drafting ? 'Drafting…' : 'Draft with AI'}</span>
+                    {!drafting && <CreditCost feature="draft-vendor-email" style={{ color: 'inherit', opacity: 0.8 }} />}
                   </button>
                 </>
               ) : (

@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { blobToBase64, uploadDesignImage } from '../../lib/designImages.js';
 import { aiPost } from '../../lib/aiApi.js';
+import { useAIUsage } from '../../context/AIUsageContext.jsx';
+import CreditCost from '../CreditCost.jsx';
 
 function Moodboard({ productId, moodboard, onChange }) {
   const [uploading, setUploading] = useState(false);
@@ -66,12 +68,13 @@ function Moodboard({ productId, moodboard, onChange }) {
 }
 
 function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, logUsage }) {
+  const { canAfford, openTopup } = useAIUsage();
   const [brief, setBrief] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const generate = async (fromCanvas) => {
-    if (!canUseAI) { setError('Upgrade your plan to use AI color suggestions.'); return; }
+    if (!canAfford('design-color-palette')) { openTopup(); return; }
     setLoading(true);
     setError(null);
     try {
@@ -106,10 +109,13 @@ function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, log
         <input className="form-input" placeholder='Or describe it: "coastal resort capsule"' value={brief} onChange={e => setBrief(e.target.value)} style={{ flex: 1 }} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-sm btn-primary" onClick={() => generate(true)} disabled={loading || !canUseAI}>
-          {loading ? 'Generating…' : <><i className="ph ph-sparkle" /> From canvas ({aiRemaining} left)</>}
+        <button className="btn btn-sm btn-primary" onClick={() => generate(true)} disabled={loading}>
+          {loading ? 'Generating…' : <><i className="ph ph-sparkle" /> From canvas</>}
+          {!loading && <CreditCost feature="design-color-palette" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
         </button>
-        <button className="btn btn-sm" onClick={() => generate(false)} disabled={loading || !canUseAI}>From description</button>
+        <button className="btn btn-sm" onClick={() => generate(false)} disabled={loading}>
+          From description <CreditCost feature="design-color-palette" style={{ marginLeft: 4 }} />
+        </button>
       </div>
       {error && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{error}</div>}
     </div>
@@ -117,6 +123,7 @@ function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, log
 }
 
 function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
+  const { canAfford, openTopup } = useAIUsage();
   const [trends, setTrends] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -132,7 +139,7 @@ function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
   }, [category]);
 
   const fetchTrends = async () => {
-    if (!canUseAI) { setError('Upgrade your plan to use AI trend inspiration.'); return; }
+    if (!canAfford('design-trend-inspiration')) { openTopup(); return; }
     setLoading(true);
     setError(null);
     try {
@@ -153,8 +160,9 @@ function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
     <div className="card-raised" style={{ padding: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span className="card-title">Trend Inspiration</span>
-        <button className="btn btn-sm" onClick={fetchTrends} disabled={loading || !canUseAI}>
-          {loading ? 'Searching…' : <><i className="ph ph-sparkle" /> {trends ? 'Refresh' : `Get trends (${aiRemaining} left)`}</>}
+        <button className="btn btn-sm" onClick={fetchTrends} disabled={loading}>
+          {loading ? 'Searching…' : <><i className="ph ph-sparkle" /> {trends ? 'Refresh' : 'Get trends'}</>}
+          {!loading && <CreditCost feature="design-trend-inspiration" style={{ marginLeft: 6 }} />}
         </button>
       </div>
       {error && <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{error}</div>}

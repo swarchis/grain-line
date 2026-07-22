@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
+import CreditCost from '../components/CreditCost.jsx';
 import { supabase } from '../lib/supabase.js';
 import GarmentSilhouette, { CustomSilhouette, VectorSilhouette } from '../components/GarmentSilhouette.jsx';
 import PhotopeaEditor from '../components/PhotopeaEditor.jsx';
@@ -48,7 +49,7 @@ export default function DesignDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, designs, getUploadedFile, deleteProduct, updateProduct, activeBrand, categories, duplicateProduct, setProductStatus, updateDesignStatus, updateDesignFabricTags } = useProducts();
-  const { canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -193,7 +194,7 @@ export default function DesignDetail() {
   const statusMeta = CANVAS_STATUS[canvasStatus] || CANVAS_STATUS.ready;
 
   const captureAndAnalyze = async () => {
-    if (!canUseAI) { setCaptureError('AI design analysis is not available on your current plan — upgrade in Settings > Billing.'); return; }
+    if (!canAfford('analyze-design')) { openTopup(); return; }
     setCaptureError(null);
     setAnalyzing(true);
 
@@ -233,7 +234,7 @@ export default function DesignDetail() {
   };
 
   const handleConvertToTechPack = async () => {
-    if (!canUseAI) { setCaptureError('AI tech pack generation is not available on your current plan — upgrade in Settings > Billing.'); return; }
+    if (!canAfford('generate-tech-pack')) { openTopup(); return; }
     setGeneratingTP(true);
     setCaptureError(null);
     try {
@@ -416,8 +417,9 @@ export default function DesignDetail() {
           <button className="canvas-icon-btn" onClick={handleDuplicate} disabled={duplicating} title="Duplicate design">
             <i className={`ph ${duplicating ? 'ph-spinner ph-spin' : 'ph-copy'}`} />
           </button>
-          <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI tech pack generation' : undefined}>
-            {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade for AI Tech Pack</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
+          <button className="btn btn-primary" onClick={handleConvertToTechPack} disabled={generatingTP || analyzing}>
+            {generatingTP ? <><i className="ph ph-spinner ph-spin" /> Saving & Generating...</> : <><i className="ph ph-magic-wand" /> Auto-Generate Tech Pack</>}
+            {!generatingTP && <CreditCost feature="generate-tech-pack" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
           </button>
         </div>
       </div>
@@ -490,8 +492,9 @@ export default function DesignDetail() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={analyzing || generatingTP || !canUseAI} title={!canUseAI ? 'Upgrade your plan to use AI design analysis' : `${aiRemaining} AI generations left this month`}>
-                    {analyzing ? 'Analyzing...' : !canUseAI ? <><i className="ph ph-lock-simple" /> Upgrade</> : 'Analyze Design'}
+                  <button className="btn btn-sm btn-primary" onClick={captureAndAnalyze} disabled={analyzing || generatingTP}>
+                    {analyzing ? 'Analyzing...' : 'Analyze Design'}
+                    {!analyzing && <CreditCost feature="analyze-design" style={{ marginLeft: 6, color: 'inherit', opacity: 0.8 }} />}
                   </button>
                   <button className="canvas-icon-btn" onClick={toggleExpand} disabled={toggling}>
                     <i className={`ph ${expanded ? 'ph-corners-in' : 'ph-corners-out'}`} />
