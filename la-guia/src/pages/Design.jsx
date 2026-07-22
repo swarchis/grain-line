@@ -27,6 +27,7 @@ export default function Design() {
   const {
     products, designs, createDesign, deleteProduct, activeBrand, duplicateProduct, setProductStatus,
     archivedProducts, loadArchivedProducts, updateDesignStatus, loading: dataLoading,
+    collections, updateProduct,
   } = useProducts();
   const { canAfford, openTopup, remaining: aiRemaining, logUsage } = useAIUsage();
   const [showNew, setShowNew] = useState(false);
@@ -40,6 +41,8 @@ export default function Design() {
   const [actionError, setActionError] = useState(null);
   const [view, setView] = useState('cards');
   const [bulkArchiving, setBulkArchiving] = useState(false);
+  const [collectionPicker, setCollectionPicker] = useState(false);
+  const [addingToCollection, setAddingToCollection] = useState(null); // collection id mid-assign
   const fileRef = useRef(null);
   const designProducts = products.filter(p => p.stage === 'concept' || p.stage === 'design');
   const multiSelect = useMultiSelect(designProducts);
@@ -71,6 +74,22 @@ export default function Design() {
       if (showArchived) loadArchivedProducts();
     } catch (err) {
       setActionError(`Couldn't update "${product.name}": ${err.message}`);
+    }
+  };
+
+  // Assign every selected design to a collection (moves them if they were
+  // already in a different one), then clear the selection.
+  const handleBulkAddToCollection = async (collectionId) => {
+    setActionError(null);
+    setAddingToCollection(collectionId);
+    try {
+      await Promise.all(multiSelect.selectedItems.map(p => updateProduct(p.id, { collection_id: collectionId })));
+      multiSelect.clear();
+      setCollectionPicker(false);
+    } catch (err) {
+      setActionError(`Couldn't add the selection to the collection: ${err.message}`);
+    } finally {
+      setAddingToCollection(null);
     }
   };
 
@@ -449,11 +468,49 @@ export default function Design() {
         onConfirm={async () => { await deleteProduct(deleteTarget.id); }}
       />
 
+      {collectionPicker && multiSelect.count > 0 && (
+        <div
+          onClick={() => setCollectionPicker(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div onClick={e => e.stopPropagation()} className="card-raised" style={{ width: '100%', maxWidth: 420, padding: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <span className="card-title">Add {multiSelect.count} design{multiSelect.count === 1 ? '' : 's'} to collection</span>
+              <button className="canvas-icon-btn" onClick={() => setCollectionPicker(false)} title="Close"><i className="ph ph-x" /></button>
+            </div>
+            {collections.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>
+                No collections yet — create one on the{' '}
+                <span style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }} onClick={() => navigate('/collections')}>Collections page</span> first.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+                {collections.map(c => (
+                  <button
+                    key={c.id}
+                    className="btn btn-sm"
+                    style={{ width: '100%', justifyContent: 'space-between' }}
+                    disabled={!!addingToCollection}
+                    onClick={() => handleBulkAddToCollection(c.id)}
+                  >
+                    <span><i className="ph ph-stack" style={{ marginRight: 6 }} />{c.name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                      {addingToCollection === c.id ? 'Adding…' : (c.launch_window || '')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {view === 'cards' && (
         <BulkActionBar
           count={multiSelect.count}
           onClear={multiSelect.clear}
           actions={[
+            { label: 'Add to collection', icon: 'ph-stack', onClick: () => setCollectionPicker(true) },
             { label: bulkArchiving ? 'Archiving…' : 'Archive', icon: 'ph-archive', onClick: handleBulkArchive },
           ]}
         />
