@@ -18,7 +18,7 @@ const DEFAULT_URL = 'https://api.atelierlabs.app/api/stripe/webhook';
 const url = process.argv[2] || DEFAULT_URL;
 
 // The events the webhook handler in index.js acts on.
-const EVENTS = ['invoice.paid', 'customer.subscription.deleted'];
+const EVENTS = ['invoice.paid', 'customer.subscription.deleted', 'checkout.session.completed'];
 
 const key = process.env.STRIPE_SECRET_KEY;
 if (!key) {

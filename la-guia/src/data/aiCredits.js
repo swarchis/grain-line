@@ -23,6 +23,14 @@ export const FEATURE_COST = {
 
 export const DEFAULT_COST = 5;
 
+// One-time credit packs (top-ups). Display mirror of api/config/aiCredits.js —
+// the backend is authoritative on price; these are for rendering the UI.
+export const CREDIT_PACKS = [
+  { id: 'small', credits: 500, price: '$8' },
+  { id: 'medium', credits: 1500, price: '$20' },
+  { id: 'large', credits: 4000, price: '$48' },
+];
+
 export function creditCost(feature) {
   return Object.prototype.hasOwnProperty.call(FEATURE_COST, feature)
     ? FEATURE_COST[feature]

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PLANS, getPlan, planIndex } from '../data/plans.js';
+import { CREDIT_PACKS } from '../data/aiCredits.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
@@ -7,7 +8,7 @@ import { useAIUsage } from '../context/AIUsageContext.jsx';
 export default function BillingTab() {
   const { activeBrand, updateBrand } = useProducts();
   const { user } = useAuth();
-  const { usedThisMonth, limit } = useAIUsage();
+  const { credits, topupCredits, buyPack, topupLoading, topupError, refresh } = useAIUsage();
 
   const [confirming, setConfirming] = useState(false);
   const [banner, setBanner] = useState(null);
@@ -45,6 +46,23 @@ export default function BillingTab() {
         .finally(() => setConfirming(false));
     } else if (status === 'cancelled') {
       setBanner({ type: 'info', text: 'Checkout cancelled — your plan is unchanged.' });
+    }
+    window.history.replaceState({}, '', '/settings');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBrand?.id]);
+
+  // On return from a credit-pack purchase. The webhook adds the credits, so
+  // just surface a banner and refresh the balance (twice, to cover webhook lag).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('topup');
+    if (!t || !activeBrand) return;
+    if (t === 'success') {
+      setBanner({ type: 'success', text: 'Credits added — your new balance will appear in a moment.' });
+      refresh();
+      setTimeout(() => refresh(), 2000);
+    } else if (t === 'cancelled') {
+      setBanner({ type: 'info', text: 'Top-up cancelled — no charge was made.' });
     }
     window.history.replaceState({}, '', '/settings');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,11 +163,10 @@ export default function BillingTab() {
             <div>
               <div style={{ fontSize: 18, fontWeight: 600 }}>{currentPlan.name}</div>
               <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{currentPlan.price}{currentPlan.priceSuffix ? ` ${currentPlan.priceSuffix}` : ''}</div>
-              {currentTier !== 'free' && (
-                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>
-                  AI usage this month: <strong style={{ color: 'var(--ink-2)' }}>{usedThisMonth} / {limit}</strong>
-                </div>
-              )}
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>
+                AI credits: <strong style={{ color: 'var(--ink-2)' }}>{credits.toLocaleString()}</strong> remaining
+                {topupCredits > 0 && <span> ({topupCredits.toLocaleString()} from top-ups)</span>}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <span className="tag tag-accent" style={{ textTransform: 'capitalize' }}>{currentTier}</span>
@@ -211,6 +228,30 @@ export default function BillingTab() {
       <div className="form-hint">
         <i className="ph ph-info" style={{ marginRight: 4 }} /> Some Premium features are marked "Coming soon" — they're on the roadmap but not built into the app yet.
       </div>
+
+      <div className="section-label" style={{ marginTop: 24 }}>Buy AI credits</div>
+      <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 12 }}>
+        One-time top-ups for when your monthly allowance runs out. These credits don't expire and are spent only after your subscription credits.
+      </div>
+      <div className="grid-3" style={{ marginBottom: 12, alignItems: 'stretch' }}>
+        {CREDIT_PACKS.map(p => (
+          <div key={p.id} className="card-raised" style={{ padding: 18, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 22, fontWeight: 700 }}>{p.credits.toLocaleString()}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 10 }}>credits</div>
+            <button
+              className="btn btn-sm btn-primary"
+              style={{ width: '100%', justifyContent: 'center', marginTop: 'auto' }}
+              disabled={!!topupLoading}
+              onClick={() => buyPack(p.id)}
+            >
+              {topupLoading === p.id ? 'Redirecting…' : `Buy — ${p.price}`}
+            </button>
+          </div>
+        ))}
+      </div>
+      {topupError && (
+        <div className="form-hint" style={{ color: 'var(--red)' }}>{topupError}</div>
+      )}
 
       {import.meta.env.DEV && (
         <div className="card-raised" style={{ marginTop: 22, padding: 18, border: '1px dashed var(--amber-border)' }}>

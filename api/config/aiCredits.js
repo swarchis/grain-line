@@ -35,6 +35,20 @@ const TIER_CREDITS = {
   premium: 1500,
 };
 
+// One-time credit packs (Phase 2 top-ups). Amounts are server-authoritative —
+// the checkout price is ALWAYS looked up here by id, never taken from the
+// client, so a user can't buy 4000 credits for $1. Keep in sync with the
+// frontend mirror in la-guia/src/data/aiCredits.js.
+const CREDIT_PACKS = {
+  small: { id: 'small', credits: 500, cents: 800, label: '500 credits' },
+  medium: { id: 'medium', credits: 1500, cents: 2000, label: '1,500 credits' },
+  large: { id: 'large', credits: 4000, cents: 4800, label: '4,000 credits' },
+};
+
+function getPack(packId) {
+  return Object.prototype.hasOwnProperty.call(CREDIT_PACKS, packId) ? CREDIT_PACKS[packId] : null;
+}
+
 function creditCost(feature) {
   return Object.prototype.hasOwnProperty.call(FEATURE_COST, feature)
     ? FEATURE_COST[feature]
@@ -47,4 +61,4 @@ function tierCredits(tier) {
     : 0;
 }
 
-module.exports = { FEATURE_COST, DEFAULT_COST, TIER_CREDITS, creditCost, tierCredits };
+module.exports = { FEATURE_COST, DEFAULT_COST, TIER_CREDITS, CREDIT_PACKS, creditCost, tierCredits, getPack };

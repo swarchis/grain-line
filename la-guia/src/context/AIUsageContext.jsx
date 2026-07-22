@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js';
 import { useProducts } from './ProductsContext.jsx';
 import { getPlan } from '../data/plans.js';
 import { creditCost } from '../data/aiCredits.js';
+import { createTopupSession, setInsufficientCreditsHandler } from '../lib/aiApi.js';
 
 // AI credit balance for the active brand. Credits are granted by subscription
 // (Stripe invoice.paid) and debited server-side per AI call; this context just
@@ -15,6 +16,11 @@ export function AIUsageProvider({ children }) {
   const [subscriptionCredits, setSubscriptionCredits] = useState(0);
   const [topupCredits, setTopupCredits] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Out-of-credits / top-up modal state.
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [topupLoading, setTopupLoading] = useState(null);
+  const [topupError, setTopupError] = useState(null);
 
   const load = useCallback(async () => {
     if (!activeBrand) { setSubscriptionCredits(0); setTopupCredits(0); setLoading(false); return; }
@@ -37,6 +43,27 @@ export function AIUsageProvider({ children }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Any metered call that comes back 402 out-of-credits pops the top-up modal.
+  useEffect(() => {
+    setInsufficientCreditsHandler(() => { setTopupError(null); setTopupOpen(true); });
+    return () => setInsufficientCreditsHandler(null);
+  }, []);
+
+  const openTopup = useCallback(() => { setTopupError(null); setTopupOpen(true); }, []);
+  const closeTopup = useCallback(() => { setTopupOpen(false); setTopupLoading(null); }, []);
+
+  const buyPack = useCallback(async (packId) => {
+    setTopupLoading(packId);
+    setTopupError(null);
+    try {
+      const url = await createTopupSession(packId);
+      window.location.href = url; // off to Stripe Checkout
+    } catch (err) {
+      setTopupError(err.message || 'Could not start checkout.');
+      setTopupLoading(null);
+    }
+  }, []);
+
   const plan = getPlan(activeBrand?.plan_tier || 'free');
   const limit = plan.limits.creditsPerMonth ?? 0;
   const credits = subscriptionCredits + topupCredits;
@@ -51,6 +78,8 @@ export function AIUsageProvider({ children }) {
   const value = {
     // credit-native
     credits, subscriptionCredits, topupCredits, costOf, canAfford,
+    // top-up modal
+    topupOpen, topupLoading, topupError, openTopup, closeTopup, buyPack,
     // back-compat with existing consumers (count-era field names)
     limit, remaining: credits, canUse, usedThisMonth: Math.max(0, limit - subscriptionCredits),
     loading, plan, logUsage, refresh: load,

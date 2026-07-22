@@ -9,7 +9,7 @@ const { Resend } = require('resend');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const { creditCost, tierCredits } = require('./config/aiCredits');
+const { creditCost, tierCredits, getPack } = require('./config/aiCredits');
 
 // Load the API env first, then tolerate keys placed in the Vite app env.
 // Existing process env values win, so deploy/runtime secrets are left alone.
@@ -870,6 +870,43 @@ app.post('/api/confirm-checkout', async (req, res) => {
   }
 });
 
+// One-time credit-pack purchase (Phase 2 top-ups). The price is looked up
+// server-side by pack id — never taken from the client — and the credit amount
+// is stamped into metadata so the checkout.session.completed webhook can grant
+// it on successful payment.
+app.post('/api/create-topup-session', requireAuth, async (req, res) => {
+  if (!requireStripe(res)) return;
+  try {
+    const { packId, brandId, brandEmail } = req.body;
+    if (!brandId) return res.status(400).json({ ok: false, error: 'No brand provided' });
+    const access = await verifyBrandAccess(req.user && req.user.id, brandId);
+    if (!access) return res.status(403).json({ ok: false, error: 'You do not have access to this brand.' });
+    const pack = getPack(packId);
+    if (!pack) return res.status(400).json({ ok: false, error: `Unknown credit pack: ${packId}` });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: pack.cents,
+          product_data: { name: `Atelier AI credits — ${pack.label}` },
+        },
+      }],
+      customer_email: brandEmail || undefined,
+      client_reference_id: brandId,
+      metadata: { brandId, credits: String(pack.credits), packId: pack.id, kind: 'ai_topup' },
+      success_url: `${APP_URL}/settings?topup=success`,
+      cancel_url: `${APP_URL}/settings?topup=cancelled`,
+    });
+    res.json({ ok: true, url: session.url });
+  } catch (error) {
+    console.error('❌ Endpoint Error:', error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post('/api/create-portal-session', async (req, res) => {
   if (!requireStripe(res)) return;
   try {
@@ -1002,6 +1039,31 @@ app.post('/api/stripe/webhook', async (req, res) => {
       } catch (err) {
         console.error("❌ Failed to downgrade brand in Supabase:", err.message);
         return res.status(500).send('Database error');
+      }
+    }
+  }
+
+  // One-time credit-pack purchase completed → add topup credits. Idempotent:
+  // top-ups ADD (unlike grants which SET), so guard against Stripe retries by
+  // checking the ledger for this session id before crediting.
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    if (supabase && session.mode === 'payment' && session.payment_status === 'paid'
+        && session.metadata && session.metadata.kind === 'ai_topup') {
+      const brandId = session.metadata.brandId;
+      const credits = parseInt(session.metadata.credits, 10);
+      if (brandId && credits > 0) {
+        try {
+          const { data: seen } = await supabase.from('ai_credit_ledger')
+            .select('id').eq('stripe_ref', session.id).eq('type', 'topup').maybeSingle();
+          if (!seen) {
+            await supabase.rpc('add_topup_credits', { p_brand_id: brandId, p_amount: credits, p_stripe_ref: session.id });
+            console.log(`✅ Added ${credits} top-up credits to brand ${brandId} (${session.id}).`);
+          }
+        } catch (err) {
+          console.error('❌ Failed to add top-up credits:', err.message);
+          return res.status(500).send('Top-up credit error');
+        }
       }
     }
   }
