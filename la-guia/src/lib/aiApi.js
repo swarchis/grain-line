@@ -12,6 +12,12 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 let activeBrandId = null;
 export function setActiveBrandId(id) { activeBrandId = id || null; }
 
+// The active brand's philosophy fields (quality tier, budget philosophy,
+// sustainability, risk tolerance), pushed by ProductsContext. Injected into
+// every metered AI call so responses match how the founder wants to operate.
+let brandProfile = null;
+export function setBrandProfile(profile) { brandProfile = profile || null; }
+
 // A callback (registered by AIUsageContext) invoked whenever a metered call
 // comes back 402 out-of-credits, so the out-of-credits modal can pop from
 // anywhere without every call site having to handle it.
@@ -57,7 +63,7 @@ export async function aiPost(path, body = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify({ brandId: activeBrandId, ...body }),
+    body: JSON.stringify({ brandId: activeBrandId, brandProfile, ...body }),
   });
   // Out of credits → pop the top-up modal (if a handler is registered). The
   // response is still returned so the call site's own error handling runs too.

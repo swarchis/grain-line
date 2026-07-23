@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from './AuthContext.jsx';
 import { uploadDesignImage, PSD_VERSION_LABEL } from '../lib/designImages.js';
-import { setActiveBrandId } from '../lib/aiApi.js';
+import { setActiveBrandId, setBrandProfile } from '../lib/aiApi.js';
 
 const ProductsContext = createContext(null);
 
@@ -27,6 +27,17 @@ export function ProductsProvider({ children }) {
 
   // Keep the AI API helper's brand id in sync so metered calls carry brandId.
   useEffect(() => { setActiveBrandId(activeBrand?.id || null); }, [activeBrand?.id]);
+
+  // Mirror the brand's philosophy into the AI helper so every AI call carries
+  // it (and picks up edits from Settings > Brand immediately).
+  useEffect(() => {
+    setBrandProfile(activeBrand ? {
+      qualityTier: activeBrand.quality_tier || null,
+      budgetPhilosophy: activeBrand.budget_philosophy || null,
+      sustainability: activeBrand.sustainability || null,
+      globalRisk: activeBrand.global_risk || null,
+    } : null);
+  }, [activeBrand?.id, activeBrand?.quality_tier, activeBrand?.budget_philosophy, activeBrand?.sustainability, activeBrand?.global_risk]);
 
   // Load every brand this user owns or has been added to as a team member
   useEffect(() => {

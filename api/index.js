@@ -217,6 +217,27 @@ function cleanAIJSON(text) {
   return text.replace(/```json/gi, '').replace(/```/g, '').trim();
 }
 
+// Renders the brand's stated philosophy for AI prompts. aiPost() on the
+// frontend injects `brandProfile` into every AI request automatically, and
+// every advice-shaped endpoint appends this block — so an "Aggressive" risk
+// tolerance gets bolder recommendations (with risks stated plainly) and a
+// conservative budget philosophy gets safer, cheaper options, consistently
+// across the whole app rather than only in vendor-fit analysis.
+function brandProfileBlock(p) {
+  if (!p) return '';
+  const known = [
+    p.qualityTier && `Quality tier: ${p.qualityTier}`,
+    p.budgetPhilosophy && `Budget philosophy: ${p.budgetPhilosophy}`,
+    p.sustainability && `Sustainability stance: ${p.sustainability}`,
+    p.globalRisk && `Risk tolerance: ${p.globalRisk}`,
+  ].filter(Boolean);
+  if (!known.length) return '';
+  return `
+
+BRAND PROFILE — calibrate every recommendation, tone, and suggestion to this. Match aggressiveness to the stated risk tolerance (bolder options with risks stated plainly for aggressive brands, safer options for conservative ones), and align quality/price/material suggestions with the quality tier, budget philosophy, and sustainability stance:
+${known.join('\n')}`;
+}
+
 function verifyShopifySignature(rawBody, hmacHeader) {
   if (!rawBody || !hmacHeader) return false;
   const hash = crypto
@@ -444,7 +465,7 @@ Provide a JSON response with exactly this structure:
   ]
 }`;
 
-    const analysis = await callGemini(prompt, imageBase64);
+    const analysis = await callGemini(prompt + brandProfileBlock(req.body.brandProfile), imageBase64);
     console.log("✅ Analysis successful");
     res.json({ ok: true, analysis });
   } catch (error) {
@@ -472,7 +493,7 @@ Return a JSON object with this exact structure:
   ]
 }`;
 
-    const techPackData = await callGemini(prompt, imageBase64);
+    const techPackData = await callGemini(prompt + brandProfileBlock(req.body.brandProfile), imageBase64);
     console.log("✅ Tech Pack successful");
     res.json({ ok: true, techPackData });
   } catch (error) {
@@ -515,7 +536,7 @@ Return a JSON object with exactly this structure (every array can be empty if ge
   "complianceNotes": "string — certifications, safety, labeling regulations relevant to this garment/market"
 }`;
 
-    const techPackData = await callGemini(prompt, imageBase64 || null);
+    const techPackData = await callGemini(prompt + brandProfileBlock(req.body.brandProfile), imageBase64 || null);
     console.log("✅ Full tech pack generation successful");
     res.json({ ok: true, techPackData });
   } catch (error) {
@@ -588,7 +609,7 @@ Write a concise, professional email (under 200 words), with a placeholder for th
   "body": "string (plain text, use \\n for line breaks, no markdown)"
 }`;
 
-    const draft = await callGemini(prompt);
+    const draft = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Email draft successful");
     res.json({ ok: true, draft });
   } catch (error) {
@@ -707,7 +728,7 @@ Do not invent details not supported by the text. Return a JSON object with exact
   "broader": [ same shape as above ]
 }`;
 
-    const parsed = await callGemini(prompt, imageBase64 || null);
+    const parsed = await callGemini(prompt + brandProfileBlock(req.body.brandProfile), imageBase64 || null);
 
     const PARKING_SIGNALS = ['buy this domain', 'domain is for sale', 'this domain may be for sale', 'domain for sale', 'sedo.com', 'hugedomains', 'afternic', 'dan.com', 'godaddy.com/domainsearch', 'the lease to own', 'inquire about this domain'];
     async function isLikelyAlive(url) {
@@ -775,10 +796,10 @@ Bill of materials for this product (this matters a lot — a vendor's fit strong
 ${bom && bom.length ? bom.map(b => `- ${b.material}${b.qtyPerUnit ? `, ${b.qtyPerUnit}/unit` : ''}${b.unitCost ? `, ~$${b.unitCost}/unit material cost` : ''}`).join('\n') : 'No BOM on file yet for this product.'}
 
 Brand context:
-Quality tier: ${brand?.qualityTier || 'unknown'}
-Budget philosophy: ${brand?.budgetPhilosophy || 'unknown'}
-Sustainability preference: ${brand?.sustainability || 'unknown'}
-Global risk tolerance: ${brand?.globalRisk || 'unknown'}
+Quality tier: ${req.body.brandProfile?.qualityTier || brand?.quality_tier || 'unknown'}
+Budget philosophy: ${req.body.brandProfile?.budgetPhilosophy || brand?.budget_philosophy || 'unknown'}
+Sustainability preference: ${req.body.brandProfile?.sustainability || brand?.sustainability || 'unknown'}
+Global risk tolerance: ${req.body.brandProfile?.globalRisk || brand?.global_risk || 'unknown'}
 
 Quote history with this vendor for this product: ${quoteHistory && quoteHistory.length ? JSON.stringify(quoteHistory) : 'none yet'}
 
@@ -1648,7 +1669,7 @@ Return a JSON object with exactly this structure:
 }
 Return 2 to 4 suggestions, ordered most important first. Use "warning" only for things that need action soon (a gate flag, a near-term deadline, hitting a plan limit); use "success" sparingly, only when something is genuinely going well and worth acknowledging; otherwise "info".`;
 
-    const result = await callGemini(prompt);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Dashboard suggestions successful");
     res.json({ ok: true, suggestions: result.suggestions || [] });
   } catch (error) {
@@ -1771,7 +1792,7 @@ Return a JSON object with exactly this structure:
 { "palette": [ { "name": "descriptive color name", "hex": "#RRGGBB", "role": "primary" | "secondary" | "accent" | "neutral" } ] }
 Exactly 5 entries: one primary, one secondary, one accent, and two neutrals.`;
 
-    const result = await callGemini(prompt, imageBase64 || null);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile), imageBase64 || null);
     console.log("✅ Color palette successful");
     res.json({ ok: true, palette: result.palette || [] });
   } catch (error) {
@@ -1817,7 +1838,7 @@ Return a JSON object with exactly this structure:
 { "trends": [ { "theme": "short trend name", "detail": "1-2 sentence description of what this means for the design", "category": "silhouette" | "color" | "fabric" | "detail" } ] }
 Return 3 to 6 entries.`;
 
-    const result = await callGemini(prompt);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Trend inspiration successful");
     res.json({ ok: true, trends: result.trends || [] });
   } catch (error) {
@@ -2018,7 +2039,7 @@ Be concise and direct — a couple of short paragraphs or a short list at most, 
 Return a JSON object with exactly this structure:
 { "reply": "string, plain text, use \\n for line breaks, no markdown headers or bullet asterisks" }`;
 
-    const result = await callGemini(prompt);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Chat reply successful");
     res.json({ ok: true, reply: result.reply });
   } catch (error) {
@@ -2087,7 +2108,7 @@ Return a JSON object with exactly this structure:
   "dutyNote": "one short sentence, including a reminder this isn't customs/tax advice"
 }`;
 
-    const result = await callGemini(prompt);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Quote economics successful");
     res.json({
       ok: true,
@@ -2136,7 +2157,7 @@ Return a JSON object with exactly this structure:
 }
 Include one "levers" entry for every non-choice id, and one "choiceLevers" entry (with every one of its listed option ids) for every choice id.`;
 
-    const result = await callGemini(prompt);
+    const result = await callGemini(prompt + brandProfileBlock(req.body.brandProfile));
     console.log("✅ Cost simulator successful");
     res.json({ ok: true, levers: result.levers || [], choiceLevers: result.choiceLevers || [] });
   } catch (error) {
