@@ -21,6 +21,7 @@ import Breadcrumbs from '../components/Breadcrumbs.jsx';
 import Splitter from '../components/Splitter.jsx';
 import AssetsTab from '../components/design-studio/AssetsTab.jsx';
 import { aiPost } from '../lib/aiApi.js';
+import { toast } from '../lib/toast.js';
 
 const SEVERITY_ICON = { amber: 'ph-warning', blue: 'ph-info', green: 'ph-check-circle', red: 'ph-x-circle' };
 const DESIGN_STATUSES = ['Sketching', 'Refining', 'Ready'];
@@ -49,7 +50,7 @@ export default function DesignDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, designs, getUploadedFile, deleteProduct, updateProduct, activeBrand, categories, duplicateProduct, setProductStatus, updateDesignStatus, updateDesignFabricTags } = useProducts();
-  const { canAfford, openTopup, canUse: canUseAI, remaining: aiRemaining, logUsage } = useAIUsage();
+  const { canAfford, openTopup, logUsage } = useAIUsage();
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -217,6 +218,7 @@ export default function DesignDetail() {
     setCaptureError(null);
     try {
       await persistCanvas('Saved canvas');
+      toast.success('Canvas saved.');
     } catch (err) {
       setCaptureError('Save failed: ' + err.message);
     } finally {
@@ -719,8 +721,6 @@ export default function DesignDetail() {
                   onCapture={captureCanvasBase64}
                   onApplyToCanvas={applyResultToCanvas}
                   onAddLayer={addLayerToCanvas}
-                  canUseAI={canUseAI}
-                  aiRemaining={aiRemaining}
                   logUsage={logUsage}
                   onVersionSaved={() => setHistoryRefreshKey(k => k + 1)}
                 />
@@ -808,8 +808,6 @@ export default function DesignDetail() {
             onCapture={captureCanvasBase64}
             onApplyToCanvas={applyResultToCanvas}
             onAddLayer={addLayerToCanvas}
-            canUseAI={canUseAI}
-            aiRemaining={aiRemaining}
             logUsage={logUsage}
             onVersionSaved={() => setHistoryRefreshKey(k => k + 1)}
           />
@@ -824,8 +822,6 @@ export default function DesignDetail() {
             palette={palette}
             onPaletteChange={v => { setPalette(v); persistStudioField('palette', v); }}
             onCapture={captureCanvasBase64}
-            canUseAI={canUseAI}
-            aiRemaining={aiRemaining}
             logUsage={logUsage}
           />
         )}
@@ -837,8 +833,6 @@ export default function DesignDetail() {
             onChange={v => { setVariants(v); persistStudioField('variants', v); }}
             onCapture={captureCanvasBase64}
             onApplyToCanvas={applyResultToCanvas}
-            canUseAI={canUseAI}
-            aiRemaining={aiRemaining}
             logUsage={logUsage}
           />
         )}

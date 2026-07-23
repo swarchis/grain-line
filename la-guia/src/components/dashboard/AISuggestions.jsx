@@ -29,7 +29,7 @@ export default function AISuggestions() {
   const { activeBrand, products } = useProducts();
   const { orders } = useProduction();
   const { members } = useTeam();
-  const { canAfford, openTopup, plan, logUsage, limit, usedThisMonth } = useAIUsage();
+  const { canAfford, openTopup, plan, logUsage, credits, limit } = useAIUsage();
 
   const [suggestions, setSuggestions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -63,7 +63,7 @@ export default function AISuggestions() {
           products: products.map(p => ({ name: p.name, stage: p.stage, readiness: p.readiness, risk: p.risk, budget: p.budget })),
           upcomingDeadlines,
           gateFlags,
-          aiUsage: { used: usedThisMonth, limit },
+          aiCredits: { remaining: credits, monthlyAllowance: limit },
           seats: { used: members.length, limit: plan.limits.teamMembers },
         });
       const data = await res.json();

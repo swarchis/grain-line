@@ -107,6 +107,7 @@ export default function ProductionOrderDetail() {
     try {
       await addIssue(order.id, issueForm);
       setIssueForm({ severity: 'Medium', description: '' });
+      toast.success('Issue logged.');
     } catch (err) {
       toast.error('Could not log that issue: ' + err.message);
     } finally {
@@ -121,6 +122,7 @@ export default function ProductionOrderDetail() {
     try {
       await addUpdate(order.id, updateNote.trim());
       setUpdateNote('');
+      toast.success('Update logged.');
     } catch (err) {
       toast.error('Could not log that update: ' + err.message);
     } finally {
@@ -135,6 +137,7 @@ export default function ProductionOrderDetail() {
     try {
       await addPayment(order.id, paymentForm);
       setPaymentForm({ amount: '', paid_at: new Date().toISOString().slice(0,10), note: '' });
+      toast.success('Payment logged.');
     } catch (err) {
       toast.error('Could not log payment: ' + err.message);
     } finally {
@@ -152,6 +155,7 @@ export default function ProductionOrderDetail() {
         shipped_at: shipment.shipped_at || null,
       });
       setShipmentDraft(null);
+      toast.success('Shipment details saved.');
     } catch (err) {
       toast.error('Could not save shipment details: ' + err.message);
     }
@@ -162,6 +166,7 @@ export default function ProductionOrderDetail() {
     try {
       await updateOrder(order.id, { received_units: receivedUnits === '' ? null : Number(receivedUnits) });
       setReceivedDraft(null);
+      toast.success('Received units saved.');
     } catch (err) {
       toast.error('Could not save received units: ' + err.message);
     }

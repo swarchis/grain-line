@@ -4,7 +4,7 @@ import { aiPost } from '../../lib/aiApi.js';
 import { useAIUsage } from '../../context/AIUsageContext.jsx';
 import CreditCost from '../CreditCost.jsx';
 
-export default function VariantsTab({ productId, variants, onChange, onCapture, onApplyToCanvas, canUseAI, aiRemaining, logUsage }) {
+export default function VariantsTab({ productId, variants, onChange, onCapture, onApplyToCanvas, logUsage }) {
   const { canAfford, openTopup } = useAIUsage();
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);

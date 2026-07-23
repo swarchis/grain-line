@@ -111,6 +111,7 @@ export default function VendorDetail() {
       if (deadline) preferences.deadline = deadline;
       await requestQuote({ vendorId: vendor.id, productId: selectedProduct, message, preferences });
       setShowRequest(false);
+      toast.success('Quote request sent.');
       setSelectedProduct(''); setQuantity(''); setTargetCost(''); setDeadline(''); setMessage(''); setOverrideGate(false);
     } catch (err) {
       toast.error('Could not send request: ' + err.message);

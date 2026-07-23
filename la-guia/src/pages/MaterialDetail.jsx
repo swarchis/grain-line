@@ -96,6 +96,7 @@ export default function MaterialDetail() {
     try {
       await addCostLogEntry(material.id, costForm);
       setCostForm({ unitCost: '', note: '' });
+      toast.success('Price logged.');
     } catch (err) {
       toast.error('Could not log that price: ' + err.message);
     } finally {
@@ -110,6 +111,7 @@ export default function MaterialDetail() {
     try {
       await linkVendor(material.id, linkVendorId);
       setLinkVendorId('');
+      toast.success('Vendor linked.');
     } catch (err) {
       toast.error('Could not link that vendor: ' + err.message);
     } finally {

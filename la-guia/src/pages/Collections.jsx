@@ -43,6 +43,7 @@ export default function Collections() {
       await createCollection({ name: form.name, launchWindow: form.launchWindow });
       setShowNew(false);
       setForm({ name: '', launchWindow: '' });
+      toast.success('Collection created.');
     } catch (err) {
       toast.error("Failed to create collection: " + err.message);
     } finally {

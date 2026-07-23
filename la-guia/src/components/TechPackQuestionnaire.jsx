@@ -18,7 +18,7 @@ const FIELDS = [
   { key: 'other', label: 'Other — anything else to include (or leave out)', placeholder: 'e.g. "No care label needed, we handle that separately" or "Add a reinforced hem detail"' },
 ];
 
-export default function TechPackQuestionnaire({ open, onClose, category, onComplete, canUseAI, logUsage }) {
+export default function TechPackQuestionnaire({ open, onClose, category, onComplete, logUsage }) {
   const { canAfford, openTopup } = useAIUsage();
   const [answers, setAnswers] = useState({});
   const [generating, setGenerating] = useState(false);

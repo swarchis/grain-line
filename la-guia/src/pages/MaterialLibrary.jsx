@@ -51,6 +51,7 @@ export default function MaterialLibrary() {
       await createMaterial(form);
       setForm(EMPTY_FORM);
       setShowAdd(false);
+      toast.success('Material added.');
     } catch (err) {
       toast.error('Could not add material: ' + err.message);
     } finally {

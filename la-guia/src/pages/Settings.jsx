@@ -62,6 +62,7 @@ function TeamTab() {
     setError(null);
     try {
       await inviteMember(trimmed, role);
+      toast.success('Invite sent.');
       setEmail('');
     } catch (err) {
       setError(err.message.includes('duplicate') ? 'That email is already invited to this brand.' : err.message);

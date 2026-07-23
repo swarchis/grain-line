@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { blobToBase64, uploadDesignImage } from '../../lib/designImages.js';
 import { aiPost } from '../../lib/aiApi.js';
+import { supabase } from '../../lib/supabase.js';
 import { useAIUsage } from '../../context/AIUsageContext.jsx';
 import CreditCost from '../CreditCost.jsx';
 
@@ -67,7 +68,7 @@ function Moodboard({ productId, moodboard, onChange }) {
   );
 }
 
-function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, logUsage }) {
+function ColorPalette({ palette, onChange, onCapture, logUsage }) {
   const { canAfford, openTopup } = useAIUsage();
   const [brief, setBrief] = useState('');
   const [loading, setLoading] = useState(false);
@@ -122,7 +123,7 @@ function ColorPalette({ palette, onChange, onCapture, canUseAI, aiRemaining, log
   );
 }
 
-function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
+function TrendInspiration({ category, logUsage }) {
   const { canAfford, openTopup } = useAIUsage();
   const [trends, setTrends] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -185,13 +186,13 @@ function TrendInspiration({ category, canUseAI, aiRemaining, logUsage }) {
   );
 }
 
-export default function InspirationTab({ productId, category, moodboard, onMoodboardChange, palette, onPaletteChange, onCapture, canUseAI, aiRemaining, logUsage }) {
+export default function InspirationTab({ productId, category, moodboard, onMoodboardChange, palette, onPaletteChange, onCapture, logUsage }) {
   return (
     <div style={{ maxWidth: 1080, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Moodboard productId={productId} moodboard={moodboard} onChange={onMoodboardChange} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <ColorPalette palette={palette} onChange={onPaletteChange} onCapture={onCapture} canUseAI={canUseAI} aiRemaining={aiRemaining} logUsage={logUsage} />
-        <TrendInspiration category={category} canUseAI={canUseAI} aiRemaining={aiRemaining} logUsage={logUsage} />
+        <ColorPalette palette={palette} onChange={onPaletteChange} onCapture={onCapture} logUsage={logUsage} />
+        <TrendInspiration category={category} logUsage={logUsage} />
       </div>
     </div>
   );

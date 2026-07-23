@@ -56,6 +56,7 @@ export default function ProductionOrders() {
       setShowNew(false);
       setForm({ productId: '', vendorId: '', units: '', dueDate: '', poNumber: '' });
       setOverrideGate(false);
+      toast.success('Production order created.');
     } catch (err) {
       toast.error("Failed to create order: " + err.message);
     } finally {

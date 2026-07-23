@@ -40,6 +40,16 @@ export async function createTopupSession(packId, brandEmail) {
   return data.url;
 }
 
+// Authenticated POST for non-metered endpoints (JWT attached, no brandId
+// injection) — billing/account calls the backend now requires auth on.
+export async function apiPost(path, body = {}) {
+  return fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+}
+
 // POST to a metered AI endpoint with the Supabase JWT + active brandId injected.
 // `body` is merged over { brandId } (so a caller can still override brandId).
 // Returns the raw fetch Response.

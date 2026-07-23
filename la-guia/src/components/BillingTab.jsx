@@ -4,6 +4,7 @@ import { CREDIT_PACKS } from '../data/aiCredits.js';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAIUsage } from '../context/AIUsageContext.jsx';
+import { apiPost } from '../lib/aiApi.js';
 
 export default function BillingTab() {
   const { activeBrand, updateBrand } = useProducts();
@@ -31,11 +32,7 @@ export default function BillingTab() {
     if (status === 'success') {
       const sessionId = params.get('session_id');
       setConfirming(true);
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/confirm-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      })
+      apiPost('/api/confirm-checkout', { sessionId })
         .then(r => r.json())
         .then(async (data) => {
           if (!data.ok) throw new Error(data.error);
@@ -74,11 +71,7 @@ export default function BillingTab() {
   // week, still shows Premium" within one page load instead of never.
   useEffect(() => {
     if (!activeBrand?.stripe_subscription_id || activeBrand.plan_tier === 'free') return;
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/subscription-status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptionId: activeBrand.stripe_subscription_id }),
-    })
+    apiPost('/api/subscription-status', { subscriptionId: activeBrand.stripe_subscription_id })
       .then(r => r.json())
       .then(data => {
         if (!data.ok) return;
@@ -96,11 +89,7 @@ export default function BillingTab() {
   const startCheckout = async (planId) => {
     setCheckoutLoading(planId);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/create-checkout-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: planId, brandId: activeBrand.id, brandEmail: user?.email }),
-      });
+      const res = await apiPost('/api/create-checkout-session', { plan: planId, brandId: activeBrand.id, brandEmail: user?.email });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       window.location.href = data.url;
@@ -128,11 +117,7 @@ export default function BillingTab() {
   const openPortal = async () => {
     setPortalLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/create-portal-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: activeBrand.stripe_customer_id }),
-      });
+      const res = await apiPost('/api/create-portal-session', { customerId: activeBrand.stripe_customer_id });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       window.location.href = data.url;

@@ -137,6 +137,7 @@ export default function ContentHub() {
       setForm({ platform: 'instagram', scheduledFor: '', caption: '', productId: '' });
       setFile(null); setPreviewUrl(null);
       setShowComposer(false);
+      toast.success('Post scheduled.');
     } catch (err) {
       toast.error('Could not schedule post: ' + err.message);
     } finally {

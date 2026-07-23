@@ -4,6 +4,7 @@ import { useSampling } from '../context/SamplingContext.jsx';
 import { useProducts } from '../context/ProductsContext.jsx';
 import { useVendors } from '../context/VendorsContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import { toast } from '../lib/toast.js';
 
 const TECHPACK_STAGES = ['techpack', 'sourcing', 'sampling', 'production', 'launched'];
 const STATUS_TAG = {
@@ -43,6 +44,7 @@ export default function Sampling() {
     setError(null);
     try {
       const created = await createSampleRequest(form);
+      toast.success('Sample requested.');
       setShowNew(false);
       setForm({ productId: '', vendorId: '', requestNotes: '', expectedDate: '' });
       navigate(`/sampling/${created.product_id}`);

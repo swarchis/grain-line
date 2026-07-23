@@ -38,7 +38,7 @@ function downloadPng(base64, mimeType, filename) {
   a.click();
 }
 
-function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
+function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLayer, logUsage, onVersionSaved }) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -143,8 +143,8 @@ function ToolCard({ tool, kind, productId, onCapture, onApplyToCanvas, onAddLaye
   );
 }
 
-export default function AIStudioTab({ productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved }) {
-  const shared = { productId, onCapture, onApplyToCanvas, onAddLayer, canUseAI, aiRemaining, logUsage, onVersionSaved };
+export default function AIStudioTab({ productId, onCapture, onApplyToCanvas, onAddLayer, logUsage, onVersionSaved }) {
+  const shared = { productId, onCapture, onApplyToCanvas, onAddLayer, logUsage, onVersionSaved };
   return (
     <div style={{ maxWidth: 1080 }}>
       <div className="form-hint" style={{ marginBottom: 16 }}>

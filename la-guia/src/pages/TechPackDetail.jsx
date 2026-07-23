@@ -72,7 +72,7 @@ export default function TechPackDetail() {
   const { canManage } = useTeam();
   const { user } = useAuth();
   const { preferences } = useUserPreferences();
-  const { canUse: canUseAI, logUsage } = useAIUsage();
+  const { logUsage } = useAIUsage();
   const product = products.find(p => p.id === id);
 
   const [imageUrl, setImageUrl] = useState(null);
@@ -366,7 +366,6 @@ export default function TechPackDetail() {
           open={showQuestionnaire}
           onClose={() => setShowQuestionnaire(false)}
           category={product.category}
-          canUseAI={canUseAI}
           logUsage={logUsage}
           onComplete={(data) => { applyTechPackData(data); setShowQuestionnaire(false); }}
         />
