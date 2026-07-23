@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useProducts } from '../../context/ProductsContext.jsx';
 import { supabase } from '../../lib/supabase.js';
+import { PSD_VERSION_LABEL } from '../../lib/designImages.js';
 
 // Merges several real per-entity logs (product_stage_history,
 // production_updates, design_versions, tech_pack_versions) into one
@@ -19,7 +20,9 @@ export default function ActivityFeed() {
     Promise.all([
       supabase.from('product_stage_history').select('*').in('product_id', productIds).order('created_at', { ascending: false }).limit(10),
       supabase.from('production_updates').select('*, production_orders(product_id, po_number)').order('created_at', { ascending: false }).limit(10),
-      supabase.from('design_versions').select('*, designs(product_id)').order('created_at', { ascending: false }).limit(10),
+      // Rolling autosave + working-file rows churn every couple of minutes —
+      // they'd bury the feed, so only deliberate versions show here.
+      supabase.from('design_versions').select('*, designs(product_id)').neq('label', 'Autosave').neq('label', PSD_VERSION_LABEL).order('created_at', { ascending: false }).limit(10),
       supabase.from('tech_pack_versions').select('*, tech_packs(product_id)').order('created_at', { ascending: false }).limit(10),
     ]).then(([stageHistory, updates, designVersions, tpVersions]) => {
       const merged = [

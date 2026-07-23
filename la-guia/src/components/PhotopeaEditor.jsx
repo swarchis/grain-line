@@ -47,31 +47,54 @@ const PhotopeaEditor = forwardRef(function PhotopeaEditor({ svgMarkup, file, onS
   useEffect(() => {
     function handleMessage(e) {
       if (e.data instanceof ArrayBuffer && pendingCapture.current) {
-        const blob = new Blob([e.data], { type: 'image/png' });
-        pendingCapture.current.resolve(URL.createObjectURL(blob));
+        const pending = pendingCapture.current;
         pendingCapture.current = null;
+        if (pending.kind === 'psd') {
+          // Full layered document — hand back the raw blob for upload.
+          pending.resolve(new Blob([e.data], { type: 'image/vnd.adobe.photoshop' }));
+        } else {
+          const blob = new Blob([e.data], { type: 'image/png' });
+          pending.resolve(URL.createObjectURL(blob));
+        }
       }
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // Each capture carries its own token so a stale capture's timeout can never
+  // reject a newer pending capture (autosave chains a PNG + PSD capture
+  // back-to-back, which made that race real).
+  const requestCapture = (kind, script, timeoutMs, timeoutMessage) => new Promise((resolve, reject) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) { reject(new Error('Canvas iframe not found. Please refresh.')); return; }
+    const token = {};
+    pendingCapture.current = { resolve, reject, kind, token };
+    win.postMessage(script, '*');
+    setTimeout(() => {
+      if (pendingCapture.current && pendingCapture.current.token === token) {
+        pendingCapture.current.reject(new Error(timeoutMessage));
+        pendingCapture.current = null;
+      }
+    }, timeoutMs);
+  });
+
   useImperativeHandle(ref, () => ({
-    capture: () => new Promise((resolve, reject) => {
-      const win = iframeRef.current?.contentWindow;
-      if (!win) { reject(new Error('Canvas iframe not found. Please refresh.')); return; }
-
-      pendingCapture.current = { resolve, reject };
-      // Force request flat image
-      win.postMessage("app.activeDocument.saveToOE('png');", '*');
-
-      setTimeout(() => {
-        if (pendingCapture.current) {
-          pendingCapture.current.reject(new Error('Capture timed out. Make sure you drew something on the canvas.'));
-          pendingCapture.current = null;
-        }
-      }, 8000);
-    }),
+    // Flattened PNG (object URL) — previews, analysis, snapshots.
+    capture: () => requestCapture(
+      'png',
+      "app.activeDocument.saveToOE('png');",
+      8000,
+      'Capture timed out. Make sure you drew something on the canvas.'
+    ),
+    // Full layered document (Blob) — the working file. Bigger + slower to
+    // serialize than a PNG, so it gets a longer window.
+    capturePsd: () => requestCapture(
+      'psd',
+      "app.activeDocument.saveToOE('psd');",
+      20000,
+      'PSD capture timed out.'
+    ),
     // Replaces the canvas contents with a data URL (or any URL Photopea can
     // fetch) — used to load an AI Studio result back onto the working canvas.
     openImage: (dataUrl) => {

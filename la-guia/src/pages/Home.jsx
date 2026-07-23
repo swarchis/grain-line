@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useAppUI } from '../context/AppUIContext.jsx';
 import { useSales } from '../context/SalesContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { PSD_VERSION_LABEL } from '../lib/designImages.js';
 import { riskTagClass, readinessColor, currency, stageLink, swatchGradient, tiltForId, SECTION_COLOR } from '../lib/format.js';
 import { PinnedPhoto, PhotoPanel, WaxSeal, Thumbtack } from '../components/decor.jsx';
 import ContinueWhereYouLeftOff from '../components/dashboard/ContinueWhereYouLeftOff.jsx';
@@ -241,7 +242,7 @@ export default function Home() {
       const { data: tp } = await supabase.from('tech_packs').select('image_url').eq('product_id', featured.id).single();
       if (cancelled) return;
       if (tp?.image_url) { setFeaturedImage(tp.image_url); return; }
-      const { data: versions } = await supabase.from('design_versions').select('image_url').eq('product_id', featured.id).order('created_at', { ascending: false }).limit(1);
+      const { data: versions } = await supabase.from('design_versions').select('image_url').eq('product_id', featured.id).neq('label', PSD_VERSION_LABEL).order('created_at', { ascending: false }).limit(1);
       if (cancelled) return;
       setFeaturedImage(versions?.[0]?.image_url || null);
     }

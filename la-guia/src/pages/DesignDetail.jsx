@@ -16,7 +16,7 @@ import InspirationTab from '../components/design-studio/InspirationTab.jsx';
 import VariantsTab from '../components/design-studio/VariantsTab.jsx';
 import HistoryTab from '../components/design-studio/HistoryTab.jsx';
 import SkuVariantsTab from '../components/design-studio/SkuVariantsTab.jsx';
-import { blobToBase64, uploadDesignImage } from '../lib/designImages.js';
+import { blobToBase64, uploadDesignImage, uploadDesignPsd, PSD_VERSION_LABEL } from '../lib/designImages.js';
 import Breadcrumbs from '../components/Breadcrumbs.jsx';
 import Splitter from '../components/Splitter.jsx';
 import AssetsTab from '../components/design-studio/AssetsTab.jsx';
@@ -100,16 +100,24 @@ export default function DesignDetail() {
       try {
         const { data } = await supabase
           .from('design_versions')
-          .select('image_url')
+          .select('image_url, label')
           .eq('product_id', id)
           .order('created_at', { ascending: false })
-          .limit(1);
-        const url = data?.[0]?.image_url;
-        if (!url || cancelled) return;
-        const res = await fetch(url);
+          .limit(10);
+        // Prefer the layered working file (full layer stack) over a flattened
+        // snapshot; it's refreshed on every save so it's never staler.
+        const psd = (data || []).find(v => v.label === PSD_VERSION_LABEL);
+        const raster = (data || []).find(v => v.label !== PSD_VERSION_LABEL);
+        const pick = psd || raster;
+        if (!pick?.image_url || cancelled) return;
+        const res = await fetch(pick.image_url);
         if (!res.ok) throw new Error(`image fetch failed (${res.status})`);
         const blob = await res.blob();
-        if (!cancelled) setPersistedFile(new File([blob], 'design.png', { type: blob.type || 'image/png' }));
+        if (!cancelled) {
+          setPersistedFile(psd
+            ? new File([blob], 'design.psd', { type: 'image/vnd.adobe.photoshop' })
+            : new File([blob], 'design.png', { type: blob.type || 'image/png' }));
+        }
       } catch (err) {
         console.error('Could not restore saved design image:', err);
       }
@@ -145,21 +153,53 @@ export default function DesignDetail() {
       const { data: existing } = await supabase
         .from('design_versions').select('id')
         .eq('product_id', id).eq('label', 'Autosave').maybeSingle();
+      let updated = false;
       if (existing) {
         const { error } = await supabase
           .from('design_versions')
           .update({ image_url: publicUrl, created_at: new Date().toISOString() })
           .eq('id', existing.id);
-        if (!error) { setHistoryRefreshKey(k => k + 1); return; }
-        // update blocked (e.g. missing RLS policy) — fall through to insert
+        updated = !error; // update blocked (e.g. missing RLS policy) → insert instead
       }
-      await supabase.from('design_versions')
-        .insert([{ product_id: id, image_url: publicUrl, label: 'Autosave', source: 'autosave' }]);
+      if (!updated) {
+        await supabase.from('design_versions')
+          .insert([{ product_id: id, image_url: publicUrl, label: 'Autosave', source: 'autosave' }]);
+      }
     } else {
       const { error } = await supabase.from('design_versions')
         .insert([{ product_id: id, image_url: publicUrl, label, source: 'manual-save' }]);
       if (error) throw error;
     }
+
+    // Working file: the full layered PSD, one rolling row updated on every
+    // save (manual and auto), so reopening the design restores the complete
+    // layer stack — not a flattened raster. Best-effort: if the PSD leg fails
+    // (huge document, bucket MIME restriction), the raster snapshot above has
+    // already saved and the design still restores flattened.
+    try {
+      const psdBlob = await photopeaRef.current.capturePsd();
+      if (psdBlob && psdBlob.size <= 40 * 1024 * 1024) {
+        const psdUrl = await uploadDesignPsd(psdBlob, id);
+        const { data: psdRow } = await supabase
+          .from('design_versions').select('id')
+          .eq('product_id', id).eq('label', PSD_VERSION_LABEL).maybeSingle();
+        let psdSaved = false;
+        if (psdRow) {
+          const { error } = await supabase
+            .from('design_versions')
+            .update({ image_url: psdUrl, created_at: new Date().toISOString() })
+            .eq('id', psdRow.id);
+          psdSaved = !error;
+        }
+        if (!psdSaved) {
+          await supabase.from('design_versions')
+            .insert([{ product_id: id, image_url: psdUrl, label: PSD_VERSION_LABEL, source: 'psd' }]);
+        }
+      }
+    } catch (err) {
+      console.error('PSD working-file save failed (raster snapshot still saved):', err);
+    }
+
     setHistoryRefreshKey(k => k + 1);
   };
 

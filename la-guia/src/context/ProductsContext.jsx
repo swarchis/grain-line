@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from './AuthContext.jsx';
-import { uploadDesignImage } from '../lib/designImages.js';
+import { uploadDesignImage, PSD_VERSION_LABEL } from '../lib/designImages.js';
 import { setActiveBrandId } from '../lib/aiApi.js';
 
 const ProductsContext = createContext(null);
@@ -139,10 +139,11 @@ export function ProductsProvider({ children }) {
           // template) rendered as a generic tee.
           const { data: versionData } = await supabase
             .from('design_versions')
-            .select('product_id, image_url, created_at')
+            .select('product_id, image_url, label, created_at')
             .in('product_id', productIds)
             .order('created_at', { ascending: false });
           (versionData || []).forEach(v => {
+            if (v.label === PSD_VERSION_LABEL) return; // working file, not an image
             const entry = designsMap[v.product_id];
             if (entry && !entry.previewUrl) entry.previewUrl = v.image_url; // rows arrive newest-first
           });
@@ -312,7 +313,7 @@ export function ProductsProvider({ children }) {
     // (same underlying storage object, not re-uploaded) rather than leaving
     // an obviously-not-empty product showing the "no photo yet" placeholder.
     (async () => {
-      const { data: latestVersion } = await supabase.from('design_versions').select('image_url').eq('product_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const { data: latestVersion } = await supabase.from('design_versions').select('image_url').eq('product_id', id).neq('label', PSD_VERSION_LABEL).order('created_at', { ascending: false }).limit(1).maybeSingle();
       let imageUrl = latestVersion?.image_url || null;
       if (!imageUrl) {
         const { data: tp } = await supabase.from('tech_packs').select('image_url').eq('product_id', id).maybeSingle();

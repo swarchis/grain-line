@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
+import { PSD_VERSION_LABEL } from '../../lib/designImages.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useUserPreferences } from '../../context/UserPreferencesContext.jsx';
 
@@ -23,6 +24,7 @@ function VersionHistory({ productId, onApplyToCanvas }) {
       .from('design_versions')
       .select('*')
       .eq('product_id', productId)
+      .neq('label', PSD_VERSION_LABEL) // internal working file, not a visual version
       .order('created_at', { ascending: false });
     if (loadError) setError(loadError.message);
     else setVersions(data || []);
